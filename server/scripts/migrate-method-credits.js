@@ -1,4 +1,12 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(process.cwd(), '.env') });
+require('dotenv').config({ path: path.join(process.cwd(), '.env.local') });
+
+if (!process.env.DATABASE_URL) {
+  console.error('DATABASE_URL not found. Run `vercel env pull` first or set it in a .env file.');
+  process.exit(1);
+}
+
 const { neon } = require('@neondatabase/serverless');
 const sql = neon(process.env.DATABASE_URL);
 
