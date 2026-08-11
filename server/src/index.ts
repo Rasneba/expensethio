@@ -313,10 +313,10 @@ app.get('/api/dashboard', async (req, res) => {
     res.json({
       expenseTotal: Number(expenseTotal[0].total),
       incomeTotal: Number(incomeTotal[0].total),
-      balance: Number(incomeTotal[0].total) - Number(expenseTotal[0].total) + creditTotal,
+      balance: Number(incomeTotal[0].total) - Number(expenseTotal[0].total) - creditTotal,
       monthExpense: Number(monthExpense[0].total),
       monthIncome: Number(monthIncome[0].total),
-      monthBalance: Number(monthIncome[0].total) - Number(monthExpense[0].total) + creditTotal,
+      monthBalance: Number(monthIncome[0].total) - Number(monthExpense[0].total) - creditTotal,
       creditTotal,
       count: Number(countRow[0].count),
       byCategory: byCategory.map((c) => ({
