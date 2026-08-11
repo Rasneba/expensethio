@@ -1261,6 +1261,75 @@ html.dark .chat-msg.bot {
   font-size: 13px;
 }
 
+.card-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* ===== Financial Flow Breakdown ===== */
+.flow-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flow-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+.flow-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.flow-label.income {
+  color: var(--income);
+}
+
+.flow-label.expense {
+  color: var(--danger);
+}
+
+.flow-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.flow-total {
+  padding: 10px 0 6px;
+}
+
+.flow-total .flow-label {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.flow-total .flow-value {
+  font-size: 18px;
+  letter-spacing: -0.3px;
+}
+
+.flow-liability {
+  padding: 8px 12px;
+  margin-top: 4px;
+  background: var(--warning-soft);
+  border-radius: var(--radius-xs);
+  font-size: 13px;
+}
+
 /* ===== Credit Tab ===== */
 .credit-tab {
   display: flex;

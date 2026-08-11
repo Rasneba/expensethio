@@ -45,11 +45,14 @@ interface Credit {
   amount: number;
   description: string;
   date: string;
+  due_date: string | null;
+  creditor: string;
   created_at: string;
 }
 
-const RETURNING = `id, type, amount, category, description, date::text as date, method, created_at`;
-const RETURNING_RAW = () => new UnsafeRawSql(RETURNING);
+const EXPENSE_RETURNING = `id, type, amount, category, description, date::text as date, method, created_at`;
+const EXPENSE_RETURNING_RAW = () => new UnsafeRawSql(EXPENSE_RETURNING);
+const CREDIT_RETURNING = `id, type, amount, description, date::text as date, due_date::text as due_date, creditor, created_at`;
 
 const PERIODS = ['daily', 'weekly', 'monthly', 'general'];
 
@@ -92,6 +95,8 @@ function parseCredit(row: Record<string, unknown>): Credit {
     amount: Number(row.amount),
     description: String(row.description),
     date: String(row.date),
+    due_date: row.due_date ? String(row.due_date) : null,
+    creditor: String(row.creditor || ''),
     created_at: String(row.created_at),
   };
 }
@@ -145,6 +150,10 @@ function validate(body: Record<string, unknown>, partial: boolean): string | nul
   return null;
 }
 
+/* ───────────────────────────────────────
+   EXPENSES
+   ─────────────────────────────────────── */
+
 app.get('/api/expenses', async (req, res) => {
   try {
     const { from, to } = req.query;
@@ -183,7 +192,7 @@ app.post('/api/expenses', async (req, res) => {
     const result = await db`
       INSERT INTO expenses (type, amount, category, description, date, method)
       VALUES (${toType(type)}, ${Number(amount)}, ${String(category)}, ${description ? String(description) : ''}, ${String(date)}, ${toMethod(method)})
-      RETURNING ${RETURNING_RAW()}
+      RETURNING ${EXPENSE_RETURNING_RAW()}
     `;
     res.status(201).json(parseExpense(result[0]));
   } catch (error) {
@@ -231,7 +240,7 @@ app.put('/api/expenses/:id', async (req, res) => {
     }
     params.push(id);
     const result = await db.query(
-      `UPDATE expenses SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING ${RETURNING}`,
+      `UPDATE expenses SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING ${EXPENSE_RETURNING}`,
       params
     );
     if (!result[0]) {
@@ -252,6 +261,19 @@ app.delete('/api/expenses/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete expense' });
   }
 });
+
+/* ───────────────────────────────────────
+   DASHBOARD  –  Correct financial model
+   ───────────────────────────────────────
+   
+   Income  →  Available Money
+   Expenses ──────────→  Money spent
+   Credit/Loans ──────→  Money owed (liability)
+   Plans/Budgets ─────→  Money intended to spend
+   
+   Available Balance = Income + Borrowed − Expenses − Credit Payments
+   Credit Owed       = Borrowed − Credit Payments  (liability)
+*/
 
 app.get('/api/dashboard', async (req, res) => {
   try {
@@ -308,16 +330,31 @@ app.get('/api/dashboard', async (req, res) => {
       byMonthMap.set(key, entry);
     }
 
-    const creditTotal = Number(creditRow[0].borrowed) - Number(creditRow[0].payments);
+    const creditBorrowed = Number(creditRow[0].borrowed);
+    const creditPayments = Number(creditRow[0].payments);
+    const creditOwed = creditBorrowed - creditPayments;
+
+    const inc = Number(incomeTotal[0].total);
+    const exp = Number(expenseTotal[0].total);
+    const mInc = Number(monthIncome[0].total);
+    const mExp = Number(monthExpense[0].total);
+
+    // Correct financial model:
+    // Available = Income + Borrowed − Expenses − Credit Payments
+    // Credit Owed = Borrowed − Payments (liability, not an expense)
+    const availableBalance = inc + creditBorrowed - exp - creditPayments;
+    const monthAvailableBalance = mInc + creditBorrowed - mExp - creditPayments;
 
     res.json({
-      expenseTotal: Number(expenseTotal[0].total),
-      incomeTotal: Number(incomeTotal[0].total),
-      balance: Number(incomeTotal[0].total) - Number(expenseTotal[0].total) - creditTotal,
-      monthExpense: Number(monthExpense[0].total),
-      monthIncome: Number(monthIncome[0].total),
-      monthBalance: Number(monthIncome[0].total) - Number(monthExpense[0].total) - creditTotal,
-      creditTotal,
+      incomeTotal: inc,
+      expenseTotal: exp,
+      creditBorrowed,
+      creditPayments,
+      creditOwed: Math.max(creditOwed, 0),
+      availableBalance,
+      monthIncome: mInc,
+      monthExpense: mExp,
+      monthBalance: mInc - mExp,
       count: Number(countRow[0].count),
       byCategory: byCategory.map((c) => ({
         category: c.category,
@@ -330,10 +367,14 @@ app.get('/api/dashboard', async (req, res) => {
   }
 });
 
+/* ───────────────────────────────────────
+   CREDITS  –  Enhanced with due_date & creditor
+   ─────────────────────────────────────── */
+
 app.get('/api/credits', async (req, res) => {
   try {
     const credits = await db`
-      SELECT id, type, amount, description, date::text as date, created_at
+      SELECT id, type, amount, description, date::text as date, due_date::text as due_date, creditor, created_at
       FROM credits
       ORDER BY date DESC, created_at DESC
     `;
@@ -345,7 +386,7 @@ app.get('/api/credits', async (req, res) => {
 
 app.post('/api/credits', async (req, res) => {
   try {
-    const { type, amount, description, date } = req.body;
+    const { type, amount, description, date, due_date, creditor } = req.body;
     const t = toCreditType(type);
     if (t === null) {
       return res.status(400).json({ error: 'type must be "borrow" or "payment"' });
@@ -360,10 +401,13 @@ app.post('/api/credits', async (req, res) => {
     if (typeof date !== 'string' || isNaN(Date.parse(date))) {
       return res.status(400).json({ error: 'date must be a valid date' });
     }
+    const dueDateVal = due_date && typeof due_date === 'string' && !isNaN(Date.parse(due_date)) ? due_date : null;
+    const creditorVal = creditor && typeof creditor === 'string' ? creditor.trim() : '';
+
     const result = await db`
-      INSERT INTO credits (type, amount, description, date)
-      VALUES (${t}, ${n}, ${description ? String(description) : ''}, ${String(date)})
-      RETURNING id, type, amount, description, date::text as date, created_at
+      INSERT INTO credits (type, amount, description, date, due_date, creditor)
+      VALUES (${t}, ${n}, ${description ? String(description) : ''}, ${String(date)}, ${dueDateVal}, ${creditorVal})
+      RETURNING ${new UnsafeRawSql(CREDIT_RETURNING)}
     `;
     res.status(201).json(parseCredit(result[0]));
   } catch (error) {
@@ -374,7 +418,7 @@ app.post('/api/credits', async (req, res) => {
 app.put('/api/credits/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { type, amount, description, date } = req.body;
+    const { type, amount, description, date, due_date, creditor } = req.body;
     const sets: string[] = [];
     const params: unknown[] = [];
     if (type !== undefined) {
@@ -407,12 +451,21 @@ app.put('/api/credits/:id', async (req, res) => {
       params.push(date);
       sets.push(`date = $${params.length}`);
     }
+    if (due_date !== undefined) {
+      const dueDateVal = due_date && typeof due_date === 'string' && !isNaN(Date.parse(due_date)) ? due_date : null;
+      params.push(dueDateVal);
+      sets.push(`due_date = $${params.length}`);
+    }
+    if (creditor !== undefined) {
+      params.push(typeof creditor === 'string' ? creditor.trim() : '');
+      sets.push(`creditor = $${params.length}`);
+    }
     if (sets.length === 0) {
       return res.status(400).json({ error: 'Nothing to update' });
     }
     params.push(id);
     const result = await db.query(
-      `UPDATE credits SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id, type, amount, description, date::text as date, created_at`,
+      `UPDATE credits SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING ${CREDIT_RETURNING}`,
       params
     );
     if (!result[0]) {
@@ -433,6 +486,10 @@ app.delete('/api/credits/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete credit' });
   }
 });
+
+/* ───────────────────────────────────────
+   TODOS
+   ─────────────────────────────────────── */
 
 app.get('/api/todos', async (req, res) => {
   try {

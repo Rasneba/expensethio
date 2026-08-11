@@ -78,6 +78,8 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
           amount: numAmount,
           description: description.trim() || (creditType === 'borrow' ? 'Credit borrowed' : 'Credit payment'),
           date,
+          due_date: null,
+          creditor: '',
         });
       } else if (editing && initial) {
         await updateExpense(initial.id, {

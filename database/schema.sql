@@ -21,10 +21,24 @@ CREATE TABLE IF NOT EXISTS credits (
   amount NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
   description TEXT DEFAULT '',
   date DATE NOT NULL DEFAULT CURRENT_DATE,
+  due_date DATE,
+  creditor TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_credits_date ON credits (date DESC);
+CREATE INDEX IF NOT EXISTS idx_credits_due_date ON credits (due_date) WHERE due_date IS NOT NULL;
+
+-- Migration: add due_date and creditor columns if they don't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'credits' AND column_name = 'due_date') THEN
+    ALTER TABLE credits ADD COLUMN due_date DATE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'credits' AND column_name = 'creditor') THEN
+    ALTER TABLE credits ADD COLUMN creditor TEXT DEFAULT '';
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS todos (
   id BIGSERIAL PRIMARY KEY,

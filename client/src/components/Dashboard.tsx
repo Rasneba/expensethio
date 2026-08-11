@@ -29,12 +29,20 @@ function DashboardSkeleton() {
   return (
     <div className="dash">
       <div className="stat-cards">
-        {Array.from({ length: 5 }).map((_, i) => (
+        {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="skeleton-card">
             <div className="skeleton skeleton-text" style={{ width: 60, height: 10, marginBottom: 12 }} />
             <div className="skeleton skeleton-text" style={{ width: 100, height: 24 }} />
           </div>
         ))}
+      </div>
+      <div className="skeleton-card">
+        <div className="skeleton skeleton-text" style={{ width: 180, height: 14, marginBottom: 16 }} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="skeleton" style={{ flex: 1, height: 48, borderRadius: 10 }} />
+          ))}
+        </div>
       </div>
       <div className="chart-grid">
         <div className="skeleton-card" style={{ height: 340 }}>
@@ -91,40 +99,6 @@ export default function Dashboard() {
 
   const pieData = stats.byCategory;
 
-  const statCards = [
-    {
-      label: 'Income',
-      value: fmtBirr(stats.incomeTotal),
-      icon: '📈',
-      colorClass: 'income',
-    },
-    {
-      label: 'Expenses',
-      value: fmtBirr(stats.expenseTotal),
-      icon: '📉',
-      colorClass: 'expense',
-    },
-    {
-      label: 'Balance',
-      value: fmtBirr(stats.balance),
-      icon: '💰',
-      colorClass: stats.balance >= 0 ? 'balance-positive' : 'balance-negative',
-    },
-    {
-      label: 'Credit Owed',
-      value: fmtBirr(Math.max(stats.creditTotal, 0)),
-      icon: '💳',
-      colorClass: 'credit',
-    },
-    {
-      label: 'This Month',
-      value: '',
-      icon: '📅',
-      colorClass: 'balance-positive',
-      isMonth: true,
-    },
-  ];
-
   return (
     <motion.div
       className="dash"
@@ -132,31 +106,106 @@ export default function Dashboard() {
       initial="hidden"
       animate="show"
     >
+      {/* ── Financial Summary Cards ── */}
       <motion.div className="stat-cards" variants={item}>
-        {statCards.map((card, idx) => (
-          <motion.div
-            key={card.label}
-            className={`stat-card ${card.colorClass}`}
-            whileHover={{ y: -3 }}
-            transition={{ duration: 0.2 }}
-          >
-            <div className="stat-icon">{card.icon}</div>
-            <div className="card-label">{card.label}</div>
-            {card.isMonth ? (
-              <div className="card-value small">
-                <span className="income">+{fmtBirr(stats.monthIncome)}</span>
-                <span className="expense"> −{fmtBirr(stats.monthExpense)}</span>
-                <span className={stats.monthBalance >= 0 ? 'income' : 'expense'}>
-                  {' '}= {fmtBirr(stats.monthBalance)}
-                </span>
-              </div>
-            ) : (
-              <div className="card-value">{card.value}</div>
-            )}
-          </motion.div>
-        ))}
+        <motion.div className="stat-card income" whileHover={{ y: -3 }} transition={{ duration: 0.2 }}>
+          <div className="stat-icon">📈</div>
+          <div className="card-label">Total Income</div>
+          <div className="card-value">{fmtBirr(stats.incomeTotal)}</div>
+        </motion.div>
+
+        <motion.div className="stat-card expense" whileHover={{ y: -3 }} transition={{ duration: 0.2 }}>
+          <div className="stat-icon">📉</div>
+          <div className="card-label">Total Expenses</div>
+          <div className="card-value">{fmtBirr(stats.expenseTotal)}</div>
+        </motion.div>
+
+        <motion.div className="stat-card credit" whileHover={{ y: -3 }} transition={{ duration: 0.2 }}>
+          <div className="stat-icon">💳</div>
+          <div className="card-label">Credit Owed</div>
+          <div className="card-value">{fmtBirr(stats.creditOwed)}</div>
+          <div className="card-sub">
+            Borrowed {fmtBirr(stats.creditBorrowed)} · Paid {fmtBirr(stats.creditPayments)}
+          </div>
+        </motion.div>
+
+        <motion.div
+          className={`stat-card ${stats.availableBalance >= 0 ? 'balance-positive' : 'balance-negative'}`}
+          whileHover={{ y: -3 }}
+          transition={{ duration: 0.2 }}
+        >
+          <div className="stat-icon">💰</div>
+          <div className="card-label">Available Balance</div>
+          <div className="card-value">{fmtBirr(stats.availableBalance)}</div>
+          <div className="card-sub">Income + Borrowed − Expenses − Payments</div>
+        </motion.div>
       </motion.div>
 
+      {/* ── Financial Flow Breakdown ── */}
+      <motion.div className="card" variants={item}>
+        <h3>Financial Flow</h3>
+        <div className="flow-breakdown">
+          <div className="flow-row">
+            <span className="flow-label income">Income</span>
+            <span className="flow-value income">+{fmtBirr(stats.incomeTotal)}</span>
+          </div>
+          <div className="flow-row">
+            <span className="flow-label income">Borrowed (cash in)</span>
+            <span className="flow-value income">+{fmtBirr(stats.creditBorrowed)}</span>
+          </div>
+          <div className="flow-separator" />
+          <div className="flow-row">
+            <span className="flow-label">Total Available</span>
+            <span className="flow-value">{fmtBirr(stats.incomeTotal + stats.creditBorrowed)}</span>
+          </div>
+          <div className="flow-separator" />
+          <div className="flow-row">
+            <span className="flow-label expense">Expenses (money spent)</span>
+            <span className="flow-value expense">−{fmtBirr(stats.expenseTotal)}</span>
+          </div>
+          <div className="flow-row">
+            <span className="flow-label expense">Credit Payments (money out)</span>
+            <span className="flow-value expense">−{fmtBirr(stats.creditPayments)}</span>
+          </div>
+          <div className="flow-separator" />
+          <div className="flow-row flow-total">
+            <span className="flow-label">Available Balance</span>
+            <span className={`flow-value ${stats.availableBalance >= 0 ? 'income' : 'expense'}`}>
+              {fmtBirr(stats.availableBalance)}
+            </span>
+          </div>
+          {stats.creditOwed > 0 && (
+            <div className="flow-row flow-liability">
+              <span className="flow-label" style={{ color: 'var(--warning)' }}>⚠ Outstanding Liability</span>
+              <span className="flow-value" style={{ color: 'var(--warning)' }}>{fmtBirr(stats.creditOwed)}</span>
+            </div>
+          )}
+        </div>
+      </motion.div>
+
+      {/* ── This Month ── */}
+      <motion.div className="card" variants={item}>
+        <h3>This Month</h3>
+        <div className="flow-breakdown">
+          <div className="flow-row">
+            <span className="flow-label income">Income</span>
+            <span className="flow-value income">+{fmtBirr(stats.monthIncome)}</span>
+          </div>
+          <div className="flow-row">
+            <span className="flow-label expense">Expenses</span>
+            <span className="flow-value expense">−{fmtBirr(stats.monthExpense)}</span>
+          </div>
+          <div className="flow-separator" />
+          <div className="flow-row flow-total">
+            <span className="flow-label">Net This Month</span>
+            <span className={`flow-value ${stats.monthBalance >= 0 ? 'income' : 'expense'}`}>
+              {fmtBirr(stats.monthBalance)}
+            </span>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* ── Charts ── */}
       <motion.div className="chart-grid" variants={item}>
         <div className="card chart-card">
           <h3>Spending by Category</h3>
@@ -270,6 +319,7 @@ export default function Dashboard() {
         </div>
       </motion.div>
 
+      {/* ── Recent Transactions ── */}
       {recent.length > 0 && (
         <motion.div className="card" variants={item}>
           <h3>Recent Transactions</h3>

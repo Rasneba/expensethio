@@ -24,6 +24,8 @@ export interface Credit {
   amount: number;
   description: string;
   date: string;
+  due_date: string | null;
+  creditor: string;
   created_at: string;
 }
 
@@ -39,13 +41,15 @@ export interface MonthPoint {
 }
 
 export interface DashboardData {
-  expenseTotal: number;
   incomeTotal: number;
-  balance: number;
-  monthExpense: number;
+  expenseTotal: number;
+  creditBorrowed: number;
+  creditPayments: number;
+  creditOwed: number;
+  availableBalance: number;
   monthIncome: number;
+  monthExpense: number;
   monthBalance: number;
-  creditTotal: number;
   count: number;
   byCategory: CategoryTotal[];
   byMonth: MonthPoint[];
@@ -91,6 +95,14 @@ export const addCredit = async (
   credit: Omit<Credit, 'id' | 'created_at'>
 ): Promise<Credit> => {
   const res = await api.post<Credit>('/credits', credit);
+  return res.data;
+};
+
+export const updateCredit = async (
+  id: string,
+  updates: Partial<Credit>
+): Promise<Credit> => {
+  const res = await api.put<Credit>(`/credits/${id}`, updates);
   return res.data;
 };
 

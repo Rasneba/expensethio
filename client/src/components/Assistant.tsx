@@ -11,9 +11,9 @@ interface Msg {
 const SUGGESTIONS = [
   'How much did I spend?',
   'What is my balance?',
+  'How much do I owe?',
   'Top category',
   'How much did I earn?',
-  'What did I spend on Food?',
   'Help',
 ];
 
@@ -42,8 +42,12 @@ async function answer(q: string): Promise<string> {
       : `You have earned ${fmtBirr(total)} in total.`;
   }
 
-  if (/balance|left|saved|net/.test(query)) {
-    return `Your balance is ${fmtBirr(dash.balance)} (${dash.balance >= 0 ? 'positive' : 'negative'}).`;
+  if (/balance|left|saved|net|available/.test(query)) {
+    return `Your available balance is ${fmtBirr(dash.availableBalance)} (${dash.availableBalance >= 0 ? 'positive' : 'negative'}).\nThis is calculated as: Income (${fmtBirr(dash.incomeTotal)}) + Borrowed (${fmtBirr(dash.creditBorrowed)}) − Expenses (${fmtBirr(dash.expenseTotal)}) − Credit Payments (${fmtBirr(dash.creditPayments)}).`;
+  }
+
+  if (/credit|owe|owed|borrow|loan|liability/.test(query)) {
+    return `Credit Summary:\n• Total borrowed: ${fmtBirr(dash.creditBorrowed)}\n• Payments made: ${fmtBirr(dash.creditPayments)}\n• Outstanding owed: ${fmtBirr(dash.creditOwed)}`;
   }
 
   if (/count|how many|number of|transactions/.test(query)) {
@@ -84,7 +88,8 @@ async function answer(q: string): Promise<string> {
       'I can answer questions about your money. Try:\n' +
       '• "How much did I spend?"\n' +
       '• "How much did I earn this month?"\n' +
-      '• "What is my balance?"\n' +
+      '• "What is my available balance?"\n' +
+      '• "How much do I owe?"\n' +
       '• "How much did I spend on Food & Dining?"\n' +
       '• "What is my top category?"'
     );
