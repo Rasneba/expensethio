@@ -1,20 +1,30 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getTodos, addTodo, updateTodo, deleteTodo, Todo, Period } from '../services/api';
+import { getTodos, addTodo, updateTodo, deleteTodo, Todo, TodoInput } from '../services/api';
+import { classifyTodo, formatDue, PRIORITY_META, STATUS_META, sortTodos, Bucket } from '../utils/tasks';
+import TaskSheet from './TaskSheet';
 
-const SECTIONS: { period: Period; label: string; icon: string }[] = [
-  { period: 'daily', label: 'Daily', icon: '☀️' },
-  { period: 'weekly', label: 'Weekly', icon: '📅' },
-  { period: 'monthly', label: 'Monthly', icon: '🗓️' },
-  { period: 'general', label: 'General', icon: '📌' },
+type View = 'all' | 'today' | 'upcoming' | 'overdue' | 'completed';
+
+const VIEWS: { value: View; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'today', label: 'Today' },
+  { value: 'upcoming', label: 'Upcoming' },
+  { value: 'overdue', label: 'Overdue' },
+  { value: 'completed', label: 'Completed' },
+];
+
+const SECTION_META: { key: Bucket | 'none' | 'done'; label: string; icon: string }[] = [
+  { key: 'overdue', label: 'Overdue', icon: '🔴' },
+  { key: 'today', label: 'Today', icon: '☀️' },
+  { key: 'upcoming', label: 'Upcoming', icon: '📅' },
+  { key: 'none', label: 'No due date', icon: '📌' },
+  { key: 'done', label: 'Completed', icon: '✅' },
 ];
 
 const container = {
   hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08 },
-  },
+  show: { opacity: 1, transition: { staggerChildren: 0.06 } },
 };
 
 const item = {
@@ -22,108 +32,74 @@ const item = {
   show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.4, 0, 0.2, 1] } },
 };
 
-function PlanSection({
-  section,
-  todos,
-  onToggle,
-  onDelete,
-  onAdd,
-}: {
-  section: { period: Period; label: string; icon: string };
-  todos: Todo[];
-  onToggle: (t: Todo) => void;
-  onDelete: (id: string) => void;
-  onAdd: (title: string) => void;
-}) {
-  const [title, setTitle] = useState('');
-  const doneCount = todos.filter((t) => t.done).length;
-  const pct = todos.length ? Math.round((doneCount / todos.length) * 100) : 0;
-
-  const submit = () => {
-    const text = title.trim();
-    if (!text) return;
-    onAdd(text);
-    setTitle('');
-  };
+function TaskCard({ todo, onOpen, onToggle }: { todo: Todo; onOpen: () => void; onToggle: () => void }) {
+  const bucket = classifyTodo(todo);
+  const prio = PRIORITY_META[todo.priority];
+  const statusMeta = STATUS_META[todo.status];
+  const overdue = todo.status !== 'done' && bucket === 'overdue';
 
   return (
-    <div className="card plan-card">
-      <div className="plan-header">
-        <div className="plan-title">
-          <span className="plan-icon">{section.icon}</span>
-          <h3>{section.label}</h3>
-          {todos.length > 0 && (
-            <span className="plan-count">
-              {doneCount}/{todos.length}
-            </span>
-          )}
+    <motion.li
+      className={`task-card ${todo.status === 'done' ? 'task-done' : ''} ${overdue ? 'task-overdue' : ''}`}
+      variants={item}
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      transition={{ duration: 0.25 }}
+    >
+      <button
+        className="task-check"
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
+        aria-label={todo.status === 'done' ? 'Mark as not done' : 'Mark as done'}
+      >
+        {todo.status === 'done' ? '✓' : todo.status === 'in_progress' ? '◐' : ''}
+      </button>
+      <button className="task-main" onClick={onOpen}>
+        <div className="task-top">
+          <span className={`prio prio-${todo.priority}`}>
+            {prio.dot} {prio.label}
+          </span>
+          {overdue && <span className="overdue-badge">Overdue</span>}
         </div>
-        {todos.length > 0 && (
-          <div className="progress-track">
-            <motion.div
-              className="progress-fill"
-              initial={{ width: 0 }}
-              animate={{ width: `${pct}%` }}
-              transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
-            />
-          </div>
-        )}
-      </div>
+        <div className="task-title">{todo.title}</div>
+        {todo.description && <div className="task-desc">{todo.description}</div>}
+        <div className="task-meta">
+          {todo.due_at && <span className="task-meta-item">📅 {formatDue(todo.due_at)}</span>}
+          {todo.category && <span className="task-meta-item">🏷️ {todo.category}</span>}
+        </div>
+        <div className="task-status">
+          <span className="status-dot">{statusMeta.icon}</span>
+          {statusMeta.label}
+          {todo.repeat !== 'none' && <span className="repeat-badge">🔁 {todo.repeat === 'custom' ? `every ${todo.repeat_every} ${todo.repeat_unit}${todo.repeat_every && todo.repeat_every > 1 ? 's' : ''}` : todo.repeat}</span>}
+        </div>
+      </button>
+    </motion.li>
+  );
+}
 
-      <div className="add-todo">
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-          placeholder={`Add to ${section.label.toLowerCase()} plan...`}
-        />
-        <motion.button
-          className="btn primary"
-          onClick={submit}
-          whileTap={{ scale: 0.95 }}
-        >
-          Add
-        </motion.button>
+function TaskSection({ label, icon, todos, onOpen, onToggle }: {
+  label: string;
+  icon: string;
+  todos: Todo[];
+  onOpen: (t: Todo) => void;
+  onToggle: (t: Todo) => void;
+}) {
+  if (todos.length === 0) return null;
+  return (
+    <div className="task-section">
+      <div className="task-section-header">
+        <span className="task-section-icon">{icon}</span>
+        <span className="task-section-label">{label}</span>
+        <span className="task-section-count">{todos.length}</span>
       </div>
-
-      {todos.length === 0 ? (
-        <p className="muted plan-empty">No {section.label.toLowerCase()} tasks yet.</p>
-      ) : (
-        <ul className="todo-list">
-          <AnimatePresence initial={false}>
-            {todos.map((t) => (
-              <motion.li
-                key={t.id}
-                className={t.done ? 'done' : ''}
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.25 }}
-                layout
-              >
-                <motion.button
-                  className={`check ${t.done ? 'checked' : ''}`}
-                  onClick={() => onToggle(t)}
-                  aria-label={t.done ? 'Mark as not done' : 'Mark as done'}
-                  whileTap={{ scale: 0.8 }}
-                >
-                  {t.done ? '✓' : ''}
-                </motion.button>
-                <span className="todo-title">{t.title}</span>
-                <motion.button
-                  className="btn icon danger"
-                  onClick={() => onDelete(t.id)}
-                  title="Delete"
-                  whileTap={{ scale: 0.8 }}
-                >
-                  🗑️
-                </motion.button>
-              </motion.li>
-            ))}
-          </AnimatePresence>
-        </ul>
-      )}
+      <ul className="task-list">
+        <AnimatePresence initial={false}>
+          {sortTodos(todos).map((t) => (
+            <TaskCard key={t.id} todo={t} onOpen={() => onOpen(t)} onToggle={() => onToggle(t)} />
+          ))}
+        </AnimatePresence>
+      </ul>
     </div>
   );
 }
@@ -132,6 +108,8 @@ export default function Plans() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [view, setView] = useState<View>('all');
+  const [sheet, setSheet] = useState<{ open: boolean; todo: Todo | null }>({ open: false, todo: null });
 
   const load = useCallback(async () => {
     try {
@@ -149,77 +127,173 @@ export default function Plans() {
     load();
   }, [load]);
 
+  const buckets = useMemo(() => {
+    const groups: Record<Bucket | 'none' | 'done', Todo[]> = {
+      today: [],
+      upcoming: [],
+      overdue: [],
+      none: [],
+      done: [],
+    };
+    for (const t of todos) {
+      if (t.status === 'done') groups.done.push(t);
+      else groups[classifyTodo(t)].push(t);
+    }
+    return groups;
+  }, [todos]);
+
+  const summary = useMemo(
+    () => ({
+      today: buckets.today.length,
+      upcoming: buckets.upcoming.length,
+      overdue: buckets.overdue.length,
+      completed: buckets.done.length,
+    }),
+    [buckets]
+  );
+
+  const handleSave = async (input: TodoInput, id?: string) => {
+    if (id) {
+      const updated = await updateTodo(id, input);
+      setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    } else {
+      const created = await addTodo(input);
+      setTodos((prev) => [created, ...prev]);
+    }
+    setSheet({ open: false, todo: null });
+    setError('');
+  };
+
   const handleToggle = async (t: Todo) => {
-    setTodos((prev) => prev.map((x) => (x.id === t.id ? { ...x, done: !x.done } : x)));
+    const next = t.status === 'done' ? 'todo' : 'done';
+    setTodos((prev) => prev.map((x) => (x.id === t.id ? { ...x, status: next, done: next === 'done' } : x)));
     try {
-      await updateTodo(t.id, { done: !t.done });
+      const updated = await updateTodo(t.id, { status: next });
+      setTodos((prev) => prev.map((x) => (x.id === t.id ? updated : x)));
     } catch {
-      setTodos((prev) => prev.map((x) => (x.id === t.id ? { ...x, done: t.done } : x)));
+      setTodos((prev) => prev.map((x) => (x.id === t.id ? t : x)));
       setError('Failed to update task');
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this task?')) return;
-    try {
-      await deleteTodo(id);
-      setTodos((prev) => prev.filter((t) => t.id !== id));
-    } catch {
-      setError('Failed to delete task');
-    }
+    await deleteTodo(id);
+    setTodos((prev) => prev.filter((t) => t.id !== id));
+    setSheet({ open: false, todo: null });
   };
 
-  const handleAdd = async (period: Period, title: string) => {
-    try {
-      const created = await addTodo(title, period);
-      setTodos((prev) => [created, ...prev]);
-      setError('');
-    } catch {
-      setError('Failed to add task');
+  const renderBody = () => {
+    if (view === 'all') {
+      return SECTION_META.map((s) => (
+        <TaskSection
+          key={s.key}
+          label={s.label}
+          icon={s.icon}
+          todos={buckets[s.key]}
+          onOpen={(t) => setSheet({ open: true, todo: t })}
+          onToggle={handleToggle}
+        />
+      ));
     }
-  };
-
-  if (loading) return (
-    <div className="plans">
-      <h2 className="section-title">🗒️ Plans & Todos</h2>
-      {SECTIONS.map((section) => (
-        <div key={section.period} className="skeleton-card" style={{ minHeight: 120 }}>
-          <div className="skeleton skeleton-text" style={{ width: 100, marginBottom: 16 }} />
-          <div className="skeleton skeleton-text" style={{ width: '100%', height: 38, borderRadius: 10, marginBottom: 10 }} />
-          <div className="skeleton skeleton-text" style={{ width: '80%', height: 32, borderRadius: 10 }} />
+    const list =
+      view === 'today' ? buckets.today :
+      view === 'upcoming' ? buckets.upcoming :
+      view === 'overdue' ? buckets.overdue :
+      buckets.done;
+    if (list.length === 0) {
+      return (
+        <div className="empty-state">
+          <span className="empty-icon">🗒️</span>
+          <p className="empty-desc">No tasks in this view.</p>
         </div>
-      ))}
-    </div>
-  );
+      );
+    }
+    return (
+      <ul className="task-list">
+        <AnimatePresence initial={false}>
+          {sortTodos(list).map((t) => (
+            <TaskCard key={t.id} todo={t} onOpen={() => setSheet({ open: true, todo: t })} onToggle={() => handleToggle(t)} />
+          ))}
+        </AnimatePresence>
+      </ul>
+    );
+  };
 
-  if (error) return (
-    <div className="empty-state">
-      <span className="empty-icon">⚠️</span>
-      <p className="empty-title">Something went wrong</p>
-      <p className="empty-desc">{error}</p>
-      <button className="btn" style={{ marginTop: 16 }} onClick={load}>Try Again</button>
-    </div>
-  );
+  if (loading) {
+    return (
+      <div className="plans">
+        <h2 className="section-title">🗒️ Plans & Todos</h2>
+        <div className="stat-cards">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="skeleton-card">
+              <div className="skeleton skeleton-text" style={{ width: 50, height: 10, marginBottom: 12 }} />
+              <div className="skeleton skeleton-text" style={{ width: 70, height: 24 }} />
+            </div>
+          ))}
+        </div>
+        <div className="skeleton-card" style={{ minHeight: 160 }}>
+          <div className="skeleton skeleton-text" style={{ width: 120, height: 14, marginBottom: 16 }} />
+          <div className="skeleton skeleton-text" style={{ width: '100%', height: 44, borderRadius: 10, marginBottom: 10 }} />
+          <div className="skeleton skeleton-text" style={{ width: '90%', height: 44, borderRadius: 10 }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="empty-state">
+        <span className="empty-icon">⚠️</span>
+        <p className="empty-title">Something went wrong</p>
+        <p className="empty-desc">{error}</p>
+        <button className="btn" style={{ marginTop: 16 }} onClick={load}>Try Again</button>
+      </div>
+    );
+  }
 
   return (
-    <motion.div
-      className="plans"
-      variants={container}
-      initial="hidden"
-      animate="show"
-    >
-      <motion.h2 className="section-title" variants={item}>🗒️ Plans & Todos</motion.h2>
-      {SECTIONS.map((section) => (
-        <motion.div key={section.period} variants={item}>
-          <PlanSection
-            section={section}
-            todos={todos.filter((t) => t.period === section.period)}
-            onToggle={handleToggle}
-            onDelete={handleDelete}
-            onAdd={(title) => handleAdd(section.period, title)}
-          />
-        </motion.div>
-      ))}
+    <motion.div className="plans" variants={container} initial="hidden" animate="show">
+      <motion.div className="plans-header" variants={item}>
+        <h2 className="section-title">🗒️ Plans & Todos</h2>
+        <button className="btn primary" onClick={() => setSheet({ open: true, todo: null })}>+ Add Task</button>
+      </motion.div>
+
+      <motion.div className="task-summary" variants={item}>
+        {([
+          ['today', '☀️', 'Today'],
+          ['upcoming', '📅', 'Upcoming'],
+          ['overdue', '🔴', 'Overdue'],
+          ['completed', '✅', 'Completed'],
+        ] as const).map(([key, icon, label]) => (
+          <button key={key} className="task-summary-tile" onClick={() => setView(key as View)}>
+            <span className="tile-icon">{icon}</span>
+            <span className="tile-value">{summary[key]}</span>
+            <span className="tile-label">{label}</span>
+          </button>
+        ))}
+      </motion.div>
+
+      <motion.div className="view-pills" variants={item}>
+        {VIEWS.map((v) => (
+          <button
+            key={v.value}
+            className={`pill ${view === v.value ? 'active' : ''}`}
+            onClick={() => setView(v.value)}
+          >
+            {v.label}
+          </button>
+        ))}
+      </motion.div>
+
+      <motion.div variants={item}>{renderBody()}</motion.div>
+
+      <TaskSheet
+        open={sheet.open}
+        todo={sheet.todo}
+        onClose={() => setSheet({ open: false, todo: null })}
+        onSave={handleSave}
+        onDelete={sheet.todo ? handleDelete : undefined}
+      />
     </motion.div>
   );
 }

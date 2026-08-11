@@ -45,10 +45,22 @@ CREATE TABLE IF NOT EXISTS todos (
   title TEXT NOT NULL,
   period TEXT NOT NULL DEFAULT 'general' CHECK (period IN ('daily', 'weekly', 'monthly', 'general')),
   done BOOLEAN NOT NULL DEFAULT FALSE,
+  description TEXT DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'done')),
+  priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'low')),
+  due_at TIMESTAMPTZ,
+  reminder_minutes INTEGER,
+  repeat TEXT NOT NULL DEFAULT 'none' CHECK (repeat IN ('none', 'daily', 'weekday', 'weekly', 'monthly', 'custom')),
+  repeat_every INTEGER,
+  repeat_unit TEXT,
+  category TEXT DEFAULT '',
+  notes TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_todos_period ON todos (period);
+CREATE INDEX IF NOT EXISTS idx_todos_due_at ON todos (due_at);
+CREATE INDEX IF NOT EXISTS idx_todos_status ON todos (status);
 
 CREATE TABLE IF NOT EXISTS budgets (
   id BIGSERIAL PRIMARY KEY,

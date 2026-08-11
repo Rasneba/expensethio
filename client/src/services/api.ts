@@ -116,29 +116,57 @@ export const getDashboard = async (): Promise<DashboardData> => {
 };
 
 export type Period = 'daily' | 'weekly' | 'monthly' | 'general';
+export type TodoStatus = 'todo' | 'in_progress' | 'done';
+export type TodoPriority = 'high' | 'medium' | 'low';
+export type TodoRepeat = 'none' | 'daily' | 'weekday' | 'weekly' | 'monthly' | 'custom';
 
 export interface Todo {
   id: string;
   title: string;
   period: Period;
   done: boolean;
+  description: string;
+  status: TodoStatus;
+  priority: TodoPriority;
+  due_at: string | null;
+  reminder_minutes: number | null;
+  repeat: TodoRepeat;
+  repeat_every: number | null;
+  repeat_unit: string | null;
+  category: string;
+  notes: string;
   created_at: string;
 }
+
+export type TodoInput = Partial<
+  Pick<
+    Todo,
+    | 'title'
+    | 'description'
+    | 'status'
+    | 'priority'
+    | 'due_at'
+    | 'reminder_minutes'
+    | 'repeat'
+    | 'repeat_every'
+    | 'repeat_unit'
+    | 'category'
+    | 'notes'
+    | 'done'
+  >
+>;
 
 export const getTodos = async (): Promise<Todo[]> => {
   const res = await api.get<Todo[]>('/todos');
   return res.data;
 };
 
-export const addTodo = async (title: string, period: Period): Promise<Todo> => {
-  const res = await api.post<Todo>('/todos', { title, period });
+export const addTodo = async (input: TodoInput): Promise<Todo> => {
+  const res = await api.post<Todo>('/todos', input);
   return res.data;
 };
 
-export const updateTodo = async (
-  id: string,
-  updates: Partial<Pick<Todo, 'title' | 'done'>>
-): Promise<Todo> => {
+export const updateTodo = async (id: string, updates: TodoInput): Promise<Todo> => {
   const res = await api.put<Todo>(`/todos/${id}`, updates);
   return res.data;
 };

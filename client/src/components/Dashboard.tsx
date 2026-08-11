@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { getExpenses, getDashboard, DashboardData, Expense } from '../services/api';
 import { fmtBirr } from '../utils/currency';
+import TasksWidget from './TasksWidget';
 
 const COLORS = [
   '#0ea5e9', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444',
@@ -139,6 +140,11 @@ export default function Dashboard() {
           <div className="card-value">{fmtBirr(stats.availableBalance)}</div>
           <div className="card-sub">Income + Borrowed − Expenses − Payments</div>
         </motion.div>
+      </motion.div>
+
+      {/* ── Tasks ── */}
+      <motion.div variants={item}>
+        <TasksWidget />
       </motion.div>
 
       {/* ── Financial Flow Breakdown ── */}

@@ -1,5 +1,5 @@
 import express from 'express';
-import { neon, UnsafeRawSql } from '@neondatabase/serverless';
+import { neon, neonConfig, UnsafeRawSql } from '@neondatabase/serverless';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -7,6 +7,10 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 
 dotenv.config();
+
+// Route pool queries over HTTP instead of long-lived WebSockets to avoid
+// intermittent failures from stale pooled connections under burst load.
+neonConfig.poolQueryViaFetch = true;
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -56,22 +60,100 @@ const CREDIT_RETURNING = `id, type, amount, description, date::text as date, due
 
 const PERIODS = ['daily', 'weekly', 'monthly', 'general'];
 
+type TodoStatus = 'todo' | 'in_progress' | 'done';
+type TodoPriority = 'high' | 'medium' | 'low';
+type TodoRepeat = 'none' | 'daily' | 'weekday' | 'weekly' | 'monthly' | 'custom';
+
+const TODO_STATUSES: TodoStatus[] = ['todo', 'in_progress', 'done'];
+const TODO_PRIORITIES: TodoPriority[] = ['high', 'medium', 'low'];
+const TODO_REPEATS: TodoRepeat[] = ['none', 'daily', 'weekday', 'weekly', 'monthly', 'custom'];
+
 interface Todo {
   id: string;
   title: string;
   period: 'daily' | 'weekly' | 'monthly' | 'general';
   done: boolean;
+  description: string;
+  status: TodoStatus;
+  priority: TodoPriority;
+  due_at: string | null;
+  reminder_minutes: number | null;
+  repeat: TodoRepeat;
+  repeat_every: number | null;
+  repeat_unit: string | null;
+  category: string;
+  notes: string;
   created_at: string;
 }
 
 function parseTodo(row: Record<string, unknown>): Todo {
+  const status = (TODO_STATUSES as string[]).includes(String(row.status))
+    ? (row.status as TodoStatus)
+    : row.done ? 'done' : 'todo';
   return {
     id: String(row.id),
     title: String(row.title),
     period: PERIODS.includes(String(row.period)) ? (row.period as Todo['period']) : 'general',
     done: Boolean(row.done),
+    description: String(row.description ?? ''),
+    status,
+    priority: (TODO_PRIORITIES as string[]).includes(String(row.priority))
+      ? (row.priority as TodoPriority)
+      : 'medium',
+    due_at: row.due_at ? String(row.due_at) : null,
+    reminder_minutes: row.reminder_minutes != null ? Number(row.reminder_minutes) : null,
+    repeat: (TODO_REPEATS as string[]).includes(String(row.repeat))
+      ? (row.repeat as TodoRepeat)
+      : 'none',
+    repeat_every: row.repeat_every != null ? Number(row.repeat_every) : null,
+    repeat_unit: row.repeat_unit ? String(row.repeat_unit) : null,
+    category: String(row.category ?? ''),
+    notes: String(row.notes ?? ''),
     created_at: String(row.created_at),
   };
+}
+
+function advanceDueDate(repeat: TodoRepeat, from: Date, every: number | null, unit: string | null): Date | null {
+  if (repeat === 'none') return null;
+  const d = new Date(from.getTime());
+  const e = repeat === 'custom' ? (every && every > 0 ? every : 1) : 1;
+  switch (repeat) {
+    case 'daily':
+      d.setDate(d.getDate() + 1);
+      break;
+    case 'weekday':
+      do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6);
+      break;
+    case 'weekly':
+      d.setDate(d.getDate() + 7);
+      break;
+    case 'monthly': {
+      const day = d.getDate();
+      d.setDate(1);
+      d.setMonth(d.getMonth() + 1);
+      const max = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      d.setDate(Math.min(day, max));
+      break;
+    }
+    case 'custom': {
+      const u = unit === 'week' ? 'week' : unit === 'month' ? 'month' : 'day';
+      if (u === 'week') {
+        d.setDate(d.getDate() + e * 7);
+      } else if (u === 'month') {
+        const day = d.getDate();
+        d.setDate(1);
+        d.setMonth(d.getMonth() + e);
+        const max = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        d.setDate(Math.min(day, max));
+      } else {
+        d.setDate(d.getDate() + e);
+      }
+      break;
+    }
+    default:
+      return null;
+  }
+  return d;
 }
 
 function parseExpense(row: Record<string, unknown>): Expense {
@@ -674,17 +756,22 @@ app.get('/api/reports', async (req, res) => {
    TODOS
    ─────────────────────────────────────── */
 
+const TODO_SELECT = `id, title, period, done, description, status, priority, due_at, reminder_minutes, repeat, repeat_every, repeat_unit, category, notes, created_at`;
+const TODO_SELECT_RAW = () => new UnsafeRawSql(TODO_SELECT);
+
+function validDueAt(v: unknown): string | null {
+  if (v === undefined || v === null || v === '') return null;
+  if (typeof v !== 'string') return null;
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? null : v;
+}
+
 app.get('/api/todos', async (req, res) => {
   try {
     const todos = await db`
-      SELECT id, title, period, done, created_at
+      SELECT ${TODO_SELECT_RAW()}
       FROM todos
-      ORDER BY CASE period
-        WHEN 'daily' THEN 1
-        WHEN 'weekly' THEN 2
-        WHEN 'monthly' THEN 3
-        ELSE 4
-      END, done ASC, created_at DESC
+      ORDER BY (status = 'done') ASC, due_at ASC NULLS LAST, created_at DESC
     `;
     res.json(todos.map(parseTodo));
   } catch (error) {
@@ -694,15 +781,22 @@ app.get('/api/todos', async (req, res) => {
 
 app.post('/api/todos', async (req, res) => {
   try {
-    const { title, period } = req.body;
+    const { title, period, description, status, priority, due_at, reminder_minutes, repeat, repeat_every, repeat_unit, category, notes } = req.body;
     if (typeof title !== 'string' || !title.trim()) {
       return res.status(400).json({ error: 'title must be a non-empty string' });
     }
     const p = PERIODS.includes(String(period)) ? String(period) : 'general';
+    const st = (TODO_STATUSES as string[]).includes(String(status)) ? (status as TodoStatus) : 'todo';
+    const pr = (TODO_PRIORITIES as string[]).includes(String(priority)) ? (priority as TodoPriority) : 'medium';
+    const rp = (TODO_REPEATS as string[]).includes(String(repeat)) ? (repeat as TodoRepeat) : 'none';
+    const due = validDueAt(due_at);
+    const rem = reminder_minutes === undefined || reminder_minutes === null ? null : Math.max(0, Math.round(Number(reminder_minutes)) || 0);
+    const eve = repeat_every === undefined || repeat_every === null ? null : Math.max(1, Math.round(Number(repeat_every)) || 1);
+    const unit = repeat_unit === 'week' || repeat_unit === 'month' ? repeat_unit : repeat_unit === 'day' ? 'day' : null;
     const result = await db`
-      INSERT INTO todos (title, period)
-      VALUES (${title.trim()}, ${p})
-      RETURNING id, title, period, done, created_at
+      INSERT INTO todos (title, period, description, status, priority, due_at, reminder_minutes, repeat, repeat_every, repeat_unit, category, notes, done)
+      VALUES (${title.trim()}, ${p}, ${String(description ?? '')}, ${st}, ${pr}, ${due}, ${rem}, ${rp}, ${eve}, ${unit}, ${String(category ?? '')}, ${String(notes ?? '')}, ${st === 'done'})
+      RETURNING ${TODO_SELECT_RAW()}
     `;
     res.status(201).json(parseTodo(result[0]));
   } catch (error) {
@@ -713,35 +807,109 @@ app.post('/api/todos', async (req, res) => {
 app.put('/api/todos/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, done } = req.body;
+    const body = req.body;
     const sets: string[] = [];
     const params: unknown[] = [];
-    if (title !== undefined) {
-      if (typeof title !== 'string' || !title.trim()) {
+    let status: TodoStatus | undefined;
+    let repeat: TodoRepeat = 'none';
+
+    const add = (col: string, val: unknown, column: string) => {
+      params.push(val);
+      sets.push(`${column} = $${params.length}`);
+    };
+
+    if (body.title !== undefined) {
+      if (typeof body.title !== 'string' || !body.title.trim()) {
         return res.status(400).json({ error: 'title must be a non-empty string' });
       }
-      params.push(title.trim());
-      sets.push(`title = $${params.length}`);
+      add('title', body.title.trim(), 'title');
     }
-    if (done !== undefined) {
-      if (typeof done !== 'boolean') {
+    if (body.description !== undefined) {
+      add('description', String(body.description), 'description');
+    }
+    if (body.status !== undefined) {
+      if (!(TODO_STATUSES as string[]).includes(String(body.status))) {
+        return res.status(400).json({ error: 'status must be todo, in_progress or done' });
+      }
+      status = body.status as TodoStatus;
+      add('status', status, 'status');
+      add('done', status === 'done', 'done');
+    } else if (body.done !== undefined) {
+      if (typeof body.done !== 'boolean') {
         return res.status(400).json({ error: 'done must be a boolean' });
       }
-      params.push(done);
-      sets.push(`done = $${params.length}`);
+      status = body.done ? 'done' : 'todo';
+      add('done', body.done, 'done');
+      add('status', status, 'status');
+    }
+    if (body.priority !== undefined) {
+      if (!(TODO_PRIORITIES as string[]).includes(String(body.priority))) {
+        return res.status(400).json({ error: 'priority must be high, medium or low' });
+      }
+      add('priority', body.priority, 'priority');
+    }
+    if (body.due_at !== undefined) {
+      const due = validDueAt(body.due_at);
+      if (body.due_at !== null && body.due_at !== '' && due === null) {
+        return res.status(400).json({ error: 'due_at must be a valid date' });
+      }
+      add('due_at', due, 'due_at');
+    }
+    if (body.reminder_minutes !== undefined) {
+      const rem = body.reminder_minutes === null ? null : Math.max(0, Math.round(Number(body.reminder_minutes)) || 0);
+      add('reminder_minutes', rem, 'reminder_minutes');
+    }
+    if (body.repeat !== undefined) {
+      if (!(TODO_REPEATS as string[]).includes(String(body.repeat))) {
+        return res.status(400).json({ error: 'repeat must be none, daily, weekday, weekly, monthly or custom' });
+      }
+      repeat = body.repeat as TodoRepeat;
+      add('repeat', repeat, 'repeat');
+    }
+    if (body.repeat_every !== undefined) {
+      const eve = body.repeat_every === null ? null : Math.max(1, Math.round(Number(body.repeat_every)) || 1);
+      add('repeat_every', eve, 'repeat_every');
+    }
+    if (body.repeat_unit !== undefined) {
+      const unit = body.repeat_unit === 'week' || body.repeat_unit === 'month' ? body.repeat_unit : body.repeat_unit === 'day' ? 'day' : null;
+      add('repeat_unit', unit, 'repeat_unit');
+    }
+    if (body.category !== undefined) {
+      add('category', String(body.category), 'category');
+    }
+    if (body.notes !== undefined) {
+      add('notes', String(body.notes), 'notes');
     }
     if (sets.length === 0) {
       return res.status(400).json({ error: 'Nothing to update' });
     }
+
     params.push(id);
     const result = await db.query(
-      `UPDATE todos SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id, title, period, done, created_at`,
+      `UPDATE todos SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING ${TODO_SELECT}`,
       params
     );
     if (!result[0]) {
       return res.status(404).json({ error: 'Todo not found' });
     }
-    res.json(parseTodo(result[0]));
+    let updated = parseTodo(result[0]);
+
+    // Advance-on-complete: completing a recurring task moves it to its next occurrence
+    if (updated.status === 'done' && updated.repeat !== 'none') {
+      const base = updated.due_at ? new Date(updated.due_at) : new Date();
+      const next = advanceDueDate(updated.repeat, base, updated.repeat_every, updated.repeat_unit);
+      if (next) {
+        const advanced = await db`
+          UPDATE todos
+          SET status = 'todo', done = false, due_at = ${next.toISOString()}
+          WHERE id = ${id}
+          RETURNING ${TODO_SELECT_RAW()}
+        `;
+        updated = parseTodo(advanced[0]);
+      }
+    }
+
+    res.json(updated);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update todo' });
   }
