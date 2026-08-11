@@ -58,17 +58,23 @@ Or from the project root, run `npm install` then `npm run dev` to start both.
 ### Database → Neon
 Already done during setup. Neon hosts your PostgreSQL for free.
 
-### Full app → Vercel (one project)
-The repo is set up with `vercel.json` to serve both the API and the React app from a single Vercel deployment.
+### API → Vercel (project 1)
 
 1. Push your code to GitHub
 2. In Vercel, click **Add New → Project** and import your repo
-3. In **Environment Variables**, add:
-   - `DATABASE_URL` = your Neon connection string
-4. Framework preset: **Other** (the `vercel.json` handles the build)
-5. Click **Deploy**. Done — your app is live at `https://your-app.vercel.app` with the API at `/api/expenses`
+3. Set **Root Directory** to `server`
+4. In **Environment Variables**, add `DATABASE_URL` = your Neon connection string
+5. Click **Deploy**. Your API is live at `https://your-api.vercel.app/api/expenses`
 
-> No `VITE_API_URL` needed — the frontend calls `/api` on the same domain.
+> The `server/vercel.json` tells Vercel to run the Express app via `@vercel/node` — no build step needed.
+
+### Frontend → Vercel (project 2)
+
+1. In Vercel, click **Add New → Project** and import your repo
+2. Set **Root Directory** to `client`
+3. Vercel auto-detects Vite. In **Environment Variables**, add:
+   - `VITE_API_URL` = `https://your-api.vercel.app/api`
+4. Click **Deploy**. Your app is live at `https://your-app.vercel.app`
 
 ### Local development
 ```bash
