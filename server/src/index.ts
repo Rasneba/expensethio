@@ -11,6 +11,9 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3001;
 
+if (!process.env.DATABASE_URL) {
+  console.error('DATABASE_URL is not set. Add it to your Vercel project environment variables.');
+}
 const db = neon(process.env.DATABASE_URL!);
 
 app.use(helmet());
