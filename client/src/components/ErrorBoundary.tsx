@@ -1,4 +1,5 @@
 import { Component, ReactNode } from 'react';
+import { motion } from 'framer-motion';
 
 interface Props {
   children: ReactNode;
@@ -19,13 +20,23 @@ export default class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       return (
         <div className="app">
-          <div className="card" style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <h2>Something went wrong</h2>
-            <p className="muted">{this.state.error.message}</p>
-            <button className="btn" style={{ marginTop: 16 }} onClick={() => window.location.reload()}>
-              Reload
+          <motion.div
+            className="card"
+            style={{ textAlign: 'center', padding: '60px 24px', maxWidth: 420, margin: '80px auto' }}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+          >
+            <div style={{ fontSize: 48, marginBottom: 16 }}>😵</div>
+            <h2 style={{ marginBottom: 8, fontSize: 20 }}>Something went wrong</h2>
+            <p className="muted" style={{ marginBottom: 24 }}>{this.state.error.message}</p>
+            <button
+              className="btn primary"
+              style={{ maxWidth: 200, margin: '0 auto' }}
+              onClick={() => window.location.reload()}
+            >
+              Reload App
             </button>
-          </div>
+          </motion.div>
         </div>
       );
     }

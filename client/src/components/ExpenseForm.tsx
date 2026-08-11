@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { addExpense, updateExpense, addCredit, Expense, TxType, TxMethod } from '../services/api';
 
 interface Props {
@@ -40,6 +41,7 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
   const [method, setMethod] = useState<TxMethod>(initial?.method || 'cash');
   const [creditType, setCreditType] = useState<'borrow' | 'payment'>('borrow');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const categories = mode === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
 
@@ -63,10 +65,12 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
       return;
     }
 
+    setSaving(true);
     try {
       if (mode === 'credit') {
         if (editing && initial) {
           setError('Credit entries cannot be edited here. Delete and re-add instead.');
+          setSaving(false);
           return;
         }
         await addCredit({
@@ -97,58 +101,70 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
       onSuccess();
     } catch {
       setError('Failed to save. Please try again.');
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const modeColors: Record<Mode, string> = {
+    expense: 'var(--danger)',
+    income: 'var(--income)',
+    credit: 'var(--accent)',
   };
 
   return (
     <div className="card form-card">
-      <h2>{editing ? 'Edit Transaction' : 'Add Transaction'}</h2>
+      <h2>{editing ? '✏️ Edit Transaction' : '➕ Add Transaction'}</h2>
 
       <div className="type-toggle">
-        <button
-          type="button"
-          className={mode === 'expense' ? 'active expense' : ''}
-          onClick={() => switchMode('expense')}
-        >
-          − Expense
-        </button>
-        <button
-          type="button"
-          className={mode === 'income' ? 'active income' : ''}
-          onClick={() => switchMode('income')}
-        >
-          + Income
-        </button>
-        <button
-          type="button"
-          className={mode === 'credit' ? 'active credit' : ''}
-          onClick={() => switchMode('credit')}
-        >
-          💳 Credit
-        </button>
+        {(['expense', 'income', 'credit'] as Mode[]).map((m) => (
+          <motion.button
+            key={m}
+            type="button"
+            className={mode === m ? `active ${m}` : ''}
+            onClick={() => switchMode(m)}
+            whileTap={{ scale: 0.95 }}
+          >
+            {m === 'expense' ? '− Expense' : m === 'income' ? '+ Income' : '💳 Credit'}
+          </motion.button>
+        ))}
       </div>
 
       <form onSubmit={handleSubmit}>
-        {mode === 'credit' && (
-          <div className="type-toggle sub">
-            <button
-              type="button"
-              className={creditType === 'borrow' ? 'active expense' : ''}
-              onClick={() => setCreditType('borrow')}
+        <AnimatePresence mode="wait">
+          {mode === 'credit' && (
+            <motion.div
+              key="credit-sub"
+              className="type-toggle sub"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
             >
-              Borrowed (owed)
-            </button>
-            <button
-              type="button"
-              className={creditType === 'payment' ? 'active income' : ''}
-              onClick={() => setCreditType('payment')}
-            >
-              Paying off
-            </button>
-          </div>
-        )}
+              <button
+                type="button"
+                className={creditType === 'borrow' ? 'active expense' : ''}
+                onClick={() => setCreditType('borrow')}
+              >
+                Borrowed (owed)
+              </button>
+              <button
+                type="button"
+                className={creditType === 'payment' ? 'active income' : ''}
+                onClick={() => setCreditType('payment')}
+              >
+                Paying off
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        <div className="field">
+        <motion.div
+          className="field"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+        >
           <label>Amount (Br)</label>
           <input
             type="number"
@@ -158,31 +174,45 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
             required
+            style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.3px' }}
           />
-        </div>
+        </motion.div>
 
-        {mode !== 'credit' && (
-          <>
-            <div className="field">
-              <label>Category</label>
-              <select value={category} onChange={(e) => setCategory(e.target.value)}>
-                {categories.map((cat) => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
+        <AnimatePresence mode="wait">
+          {mode !== 'credit' && (
+            <motion.div
+              key="non-credit-fields"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="field">
+                <label>Category</label>
+                <select value={category} onChange={(e) => setCategory(e.target.value)}>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
 
-            <div className="field">
-              <label>Payment Method</label>
-              <select value={method} onChange={(e) => setMethod(e.target.value as TxMethod)}>
-                <option value="cash">💵 Cash</option>
-                <option value="mobile">📱 Mobile</option>
-              </select>
-            </div>
-          </>
-        )}
+              <div className="field">
+                <label>Payment Method</label>
+                <select value={method} onChange={(e) => setMethod(e.target.value as TxMethod)}>
+                  <option value="cash">💵 Cash</option>
+                  <option value="mobile">📱 Mobile</option>
+                </select>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        <div className="field">
+        <motion.div
+          className="field"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
           <label>Description</label>
           <input
             type="text"
@@ -198,9 +228,14 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
                 : 'e.g. Groceries, Gas...'
             }
           />
-        </div>
+        </motion.div>
 
-        <div className="field">
+        <motion.div
+          className="field"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+        >
           <label>Date</label>
           <input
             type="date"
@@ -208,13 +243,34 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
             onChange={(e) => setDate(e.target.value)}
             required
           />
-        </div>
+        </motion.div>
 
-        {error && <div className="error-text">{error}</div>}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              className="error-text"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+            >
+              ⚠️ {error}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        <button type="submit" className="btn primary">
-          {editing ? 'Save Changes' : 'Save Transaction'}
-        </button>
+        <motion.button
+          type="submit"
+          className="btn primary"
+          disabled={saving}
+          whileTap={{ scale: 0.98 }}
+          style={{
+            background: saving
+              ? undefined
+              : `linear-gradient(135deg, ${modeColors[mode]}, var(--primary-strong))`,
+          }}
+        >
+          {saving ? 'Saving...' : editing ? 'Save Changes' : 'Save Transaction'}
+        </motion.button>
       </form>
     </div>
   );

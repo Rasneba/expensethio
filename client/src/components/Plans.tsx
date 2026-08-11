@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { getTodos, addTodo, updateTodo, deleteTodo, Todo, Period } from '../services/api';
 
 const SECTIONS: { period: Period; label: string; icon: string }[] = [
@@ -7,6 +8,19 @@ const SECTIONS: { period: Period; label: string; icon: string }[] = [
   { period: 'monthly', label: 'Monthly', icon: '🗓️' },
   { period: 'general', label: 'General', icon: '📌' },
 ];
+
+const container = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.08 },
+  },
+};
+
+const item = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.4, 0, 0.2, 1] } },
+};
 
 function PlanSection({
   section,
@@ -46,7 +60,12 @@ function PlanSection({
         </div>
         {todos.length > 0 && (
           <div className="progress-track">
-            <div className="progress-fill" style={{ width: `${pct}%` }} />
+            <motion.div
+              className="progress-fill"
+              initial={{ width: 0 }}
+              animate={{ width: `${pct}%` }}
+              transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+            />
           </div>
         )}
       </div>
@@ -59,28 +78,50 @@ function PlanSection({
           onKeyDown={(e) => e.key === 'Enter' && submit()}
           placeholder={`Add to ${section.label.toLowerCase()} plan...`}
         />
-        <button className="btn primary" onClick={submit}>Add</button>
+        <motion.button
+          className="btn primary"
+          onClick={submit}
+          whileTap={{ scale: 0.95 }}
+        >
+          Add
+        </motion.button>
       </div>
 
       {todos.length === 0 ? (
         <p className="muted plan-empty">No {section.label.toLowerCase()} tasks yet.</p>
       ) : (
         <ul className="todo-list">
-          {todos.map((t) => (
-            <li key={t.id} className={t.done ? 'done' : ''}>
-              <button
-                className={`check ${t.done ? 'checked' : ''}`}
-                onClick={() => onToggle(t)}
-                aria-label={t.done ? 'Mark as not done' : 'Mark as done'}
+          <AnimatePresence initial={false}>
+            {todos.map((t) => (
+              <motion.li
+                key={t.id}
+                className={t.done ? 'done' : ''}
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.25 }}
+                layout
               >
-                {t.done ? '✓' : ''}
-              </button>
-              <span className="todo-title">{t.title}</span>
-              <button className="btn icon danger" onClick={() => onDelete(t.id)} title="Delete">
-                🗑️
-              </button>
-            </li>
-          ))}
+                <motion.button
+                  className={`check ${t.done ? 'checked' : ''}`}
+                  onClick={() => onToggle(t)}
+                  aria-label={t.done ? 'Mark as not done' : 'Mark as done'}
+                  whileTap={{ scale: 0.8 }}
+                >
+                  {t.done ? '✓' : ''}
+                </motion.button>
+                <span className="todo-title">{t.title}</span>
+                <motion.button
+                  className="btn icon danger"
+                  onClick={() => onDelete(t.id)}
+                  title="Delete"
+                  whileTap={{ scale: 0.8 }}
+                >
+                  🗑️
+                </motion.button>
+              </motion.li>
+            ))}
+          </AnimatePresence>
         </ul>
       )}
     </div>
@@ -138,22 +179,47 @@ export default function Plans() {
     }
   };
 
-  if (loading) return <p className="muted">Loading plans...</p>;
-  if (error) return <p className="error-text">{error}</p>;
-
-  return (
+  if (loading) return (
     <div className="plans">
-      <h2>Plans & Todos</h2>
+      <h2 className="section-title">🗒️ Plans & Todos</h2>
       {SECTIONS.map((section) => (
-        <PlanSection
-          key={section.period}
-          section={section}
-          todos={todos.filter((t) => t.period === section.period)}
-          onToggle={handleToggle}
-          onDelete={handleDelete}
-          onAdd={(title) => handleAdd(section.period, title)}
-        />
+        <div key={section.period} className="skeleton-card" style={{ minHeight: 120 }}>
+          <div className="skeleton skeleton-text" style={{ width: 100, marginBottom: 16 }} />
+          <div className="skeleton skeleton-text" style={{ width: '100%', height: 38, borderRadius: 10, marginBottom: 10 }} />
+          <div className="skeleton skeleton-text" style={{ width: '80%', height: 32, borderRadius: 10 }} />
+        </div>
       ))}
     </div>
+  );
+
+  if (error) return (
+    <div className="empty-state">
+      <span className="empty-icon">⚠️</span>
+      <p className="empty-title">Something went wrong</p>
+      <p className="empty-desc">{error}</p>
+      <button className="btn" style={{ marginTop: 16 }} onClick={load}>Try Again</button>
+    </div>
+  );
+
+  return (
+    <motion.div
+      className="plans"
+      variants={container}
+      initial="hidden"
+      animate="show"
+    >
+      <motion.h2 className="section-title" variants={item}>🗒️ Plans & Todos</motion.h2>
+      {SECTIONS.map((section) => (
+        <motion.div key={section.period} variants={item}>
+          <PlanSection
+            section={section}
+            todos={todos.filter((t) => t.period === section.period)}
+            onToggle={handleToggle}
+            onDelete={handleDelete}
+            onAdd={(title) => handleAdd(section.period, title)}
+          />
+        </motion.div>
+      ))}
+    </motion.div>
   );
 }
