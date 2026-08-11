@@ -159,11 +159,11 @@ export interface Budget {
   percentage?: number;
 }
 
-export interface ReportBreakdown {
+export type ReportBreakdown = {
   category: string;
   total: number;
   count?: number;
-}
+};
 
 export interface ReportsData {
   overview: {
