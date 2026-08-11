@@ -8,8 +8,19 @@ CREATE TABLE IF NOT EXISTS expenses (
   category TEXT NOT NULL,
   description TEXT DEFAULT '',
   date DATE NOT NULL DEFAULT CURRENT_DATE,
+  credit TEXT NOT NULL DEFAULT 'none' CHECK (credit IN ('none', 'purchase', 'payment')),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses (date DESC);
 CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses (category);
+
+CREATE TABLE IF NOT EXISTS todos (
+  id BIGSERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  period TEXT NOT NULL DEFAULT 'general' CHECK (period IN ('daily', 'weekly', 'monthly', 'general')),
+  done BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_todos_period ON todos (period);

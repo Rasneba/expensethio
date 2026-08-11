@@ -3,8 +3,9 @@ import ExpenseList from './components/ExpenseList';
 import ExpenseForm from './components/ExpenseForm';
 import Dashboard from './components/Dashboard';
 import Assistant from './components/Assistant';
+import Plans from './components/Plans';
 
-type View = 'dashboard' | 'expenses' | 'add' | 'assistant';
+type View = 'dashboard' | 'expenses' | 'add' | 'plans' | 'assistant';
 
 function App() {
   const [view, setView] = useState<View>('dashboard');
@@ -45,6 +46,7 @@ function App() {
         {view === 'dashboard' && <Dashboard />}
         {view === 'expenses' && <ExpenseList refreshKey={refreshKey} />}
         {view === 'add' && <ExpenseForm onSuccess={afterSave} />}
+        {view === 'plans' && <Plans />}
         {view === 'assistant' && <Assistant />}
       </main>
 
@@ -69,6 +71,13 @@ function App() {
           aria-label="Add transaction"
         >
           <span className="fab-plus">+</span>
+        </button>
+        <button
+          className={view === 'plans' ? 'active' : ''}
+          onClick={() => setView('plans')}
+        >
+          <span className="nav-icon">🗒️</span>
+          <span className="nav-label">Plans</span>
         </button>
         <button
           className={view === 'assistant' ? 'active' : ''}

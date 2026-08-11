@@ -319,6 +319,57 @@ body {
 }
 
 /* ---------- Transaction list ---------- */
+.filter-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.filter-bar .field {
+  margin-bottom: 0;
+}
+
+.filter-bar .field label {
+  font-size: 12px;
+}
+
+.filter-bar .field input {
+  width: auto;
+  min-width: 150px;
+  padding: 8px 10px;
+}
+
+.filter-bar .btn {
+  height: 38px;
+  white-space: nowrap;
+}
+
+.credit-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.credit-badge.purchase {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.credit-badge.payment {
+  background: var(--income-soft);
+  color: var(--income);
+}
+
+html.dark .credit-badge.purchase {
+  background: #3d2410;
+  color: #fdba74;
+}
+
 .tx-list {
   display: flex;
   flex-direction: column;
@@ -556,6 +607,140 @@ body {
 .chat-input .btn.primary {
   width: auto;
   padding: 0 20px;
+}
+
+/* ---------- Plans ---------- */
+.plans {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.plan-header {
+  margin-bottom: 14px;
+}
+
+.plan-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-title h3 {
+  margin: 0;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 16px;
+}
+
+.plan-icon {
+  font-size: 18px;
+}
+
+.plan-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary-strong);
+  background: var(--primary-soft);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.progress-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--primary-soft);
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--primary);
+  transition: width 0.3s ease;
+}
+
+.add-todo {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.add-todo input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.add-todo input:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+.add-todo .btn.primary {
+  width: auto;
+  padding: 0 18px;
+  font-size: 14px;
+}
+
+.todo-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.todo-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.todo-list li.done .todo-title {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.check {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: transparent;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.check.checked {
+  background: var(--income);
+  border-color: var(--income);
+}
+
+.todo-title {
+  flex: 1;
+  font-size: 14px;
+}
+
+.plan-empty {
+  font-size: 13px;
 }
 
 /* ---------- Responsive ---------- */

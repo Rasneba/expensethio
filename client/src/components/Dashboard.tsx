@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
 } from 'recharts';
 import { getExpenses, getDashboard, DashboardData, Expense } from '../services/api';
+import { fmtBirr } from '../utils/currency';
 
 const COLORS = [
   '#0ea5e9', '#38bdf8', '#7dd3fc', '#0284c7', '#0369a1',
@@ -39,7 +40,8 @@ export default function Dashboard() {
   if (error) return <p className="error-text">{error}</p>;
   if (!stats) return null;
 
-  const fmt = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmt = (n: number) =>
+    `Br ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const pieData = stats.byCategory;
 
@@ -59,6 +61,10 @@ export default function Dashboard() {
         <div className={`card ${stats.balance >= 0 ? 'income' : 'expense'}`}>
           <div className="card-label">Balance</div>
           <div className="card-value">{fmt(stats.balance)}</div>
+        </div>
+        <div className={`card ${stats.creditTotal > 0 ? 'expense' : 'income'}`}>
+          <div className="card-label">Credit Owed</div>
+          <div className="card-value">{fmt(Math.max(stats.creditTotal, 0))}</div>
         </div>
         <div className="card">
           <div className="card-label">This Month</div>
@@ -156,7 +162,7 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className={`tx-amount ${e.type}`}>
-                  {e.type === 'income' ? '+' : '-'}${Number(e.amount).toFixed(2)}
+                  {e.type === 'income' ? '+' : '-'}{fmtBirr(e.amount)}
                 </div>
               </li>
             ))}

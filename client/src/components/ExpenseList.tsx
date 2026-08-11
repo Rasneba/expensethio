@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getExpenses, deleteExpense, Expense } from '../services/api';
+import { fmtBirr } from '../utils/currency';
 import ExpenseForm from './ExpenseForm';
 
 interface Props {
@@ -11,11 +12,13 @@ export default function ExpenseList({ refreshKey = 0 }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState<Expense | null>(null);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await getExpenses();
+      const data = await getExpenses(from || undefined, to || undefined);
       setExpenses(data);
       setError('');
     } catch {
@@ -23,11 +26,16 @@ export default function ExpenseList({ refreshKey = 0 }: Props) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [from, to]);
 
   useEffect(() => {
     load();
   }, [load, refreshKey]);
+
+  const clearFilter = () => {
+    setFrom('');
+    setTo('');
+  };
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('Delete this transaction?')) return;
@@ -40,14 +48,31 @@ export default function ExpenseList({ refreshKey = 0 }: Props) {
   };
 
   const fmt = (e: Expense) =>
-    e.type === 'income' ? `+$${Number(e.amount).toFixed(2)}` : `-$${Number(e.amount).toFixed(2)}`;
+    e.type === 'income' ? `+${fmtBirr(e.amount)}` : `-${fmtBirr(e.amount)}`;
 
   if (loading) return <p className="muted">Loading transactions...</p>;
   if (error) return <p className="error-text">{error}</p>;
 
+  const creditLabel = (c: string) =>
+    c === 'purchase' ? '🟠 Credit' : c === 'payment' ? '🟢 Credit payment' : null;
+
   return (
     <div>
       <h2>Transactions ({expenses.length})</h2>
+
+      <div className="filter-bar">
+        <div className="field">
+          <label>From</label>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>To</label>
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        </div>
+        {(from || to) && (
+          <button className="btn" onClick={clearFilter}>Clear</button>
+        )}
+      </div>
 
       {editing && (
         <div className="modal-backdrop" onClick={() => setEditing(null)}>
@@ -65,13 +90,18 @@ export default function ExpenseList({ refreshKey = 0 }: Props) {
       )}
 
       {expenses.length === 0 ? (
-        <p className="muted">No transactions yet. Add your first one!</p>
+        <p className="muted">No transactions found.</p>
       ) : (
         <div className="tx-list">
           {expenses.map((expense) => (
             <div key={expense.id} className="tx-row">
               <div className="tx-main">
-                <div className="tx-cat">{expense.category}</div>
+                <div className="tx-cat">
+                  {expense.category}
+                  {creditLabel(expense.credit) && (
+                    <span className={`credit-badge ${expense.credit}`}>{creditLabel(expense.credit)}</span>
+                  )}
+                </div>
                 <div className="tx-desc">
                   {expense.description && expense.description !== expense.category
                     ? expense.description

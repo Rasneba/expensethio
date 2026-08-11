@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { addExpense, updateExpense, Expense, TxType } from '../services/api';
+import { addExpense, updateExpense, Expense, TxType, TxCredit } from '../services/api';
 
 interface Props {
   onSuccess: () => void;
@@ -35,6 +35,7 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
   const [category, setCategory] = useState(initial?.category || EXPENSE_CATEGORIES[0]);
   const [description, setDescription] = useState(initial?.description || '');
   const [date, setDate] = useState(initial?.date || new Date().toISOString().split('T')[0]);
+  const [credit, setCredit] = useState<TxCredit>(initial?.credit || 'none');
   const [error, setError] = useState('');
 
   const categories = type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
@@ -66,6 +67,7 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
       category,
       description: description.trim() || category,
       date,
+      credit,
     };
 
     try {
@@ -103,7 +105,7 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
 
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label>Amount</label>
+          <label>Amount (Br)</label>
           <input
             type="number"
             step="0.01"
@@ -132,6 +134,15 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
             onChange={(e) => setDescription(e.target.value)}
             placeholder={type === 'income' ? 'e.g. Monthly salary' : 'e.g. Groceries, Gas...'}
           />
+        </div>
+
+        <div className="field">
+          <label>Payment Method</label>
+          <select value={credit} onChange={(e) => setCredit(e.target.value as TxCredit)}>
+            <option value="none">Cash / Card</option>
+            <option value="purchase">On Credit (borrowed)</option>
+            <option value="payment">Credit Payment (pay off credit)</option>
+          </select>
         </div>
 
         <div className="field">

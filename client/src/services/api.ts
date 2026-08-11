@@ -3,6 +3,7 @@ import axios from 'axios';
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 export type TxType = 'expense' | 'income';
+export type TxCredit = 'none' | 'purchase' | 'payment';
 
 export interface Expense {
   id: string;
@@ -11,6 +12,7 @@ export interface Expense {
   category: string;
   description: string;
   date: string;
+  credit: TxCredit;
   created_at: string;
 }
 
@@ -32,6 +34,7 @@ export interface DashboardData {
   monthExpense: number;
   monthIncome: number;
   monthBalance: number;
+  creditTotal: number;
   count: number;
   byCategory: CategoryTotal[];
   byMonth: MonthPoint[];
@@ -42,8 +45,10 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-export const getExpenses = async (): Promise<Expense[]> => {
-  const res = await api.get<Expense[]>('/expenses');
+export const getExpenses = async (from?: string, to?: string): Promise<Expense[]> => {
+  const res = await api.get<Expense[]>('/expenses', {
+    params: { from: from || undefined, to: to || undefined },
+  });
   return res.data;
 };
 
@@ -69,4 +74,36 @@ export const deleteExpense = async (id: string): Promise<void> => {
 export const getDashboard = async (): Promise<DashboardData> => {
   const res = await api.get<DashboardData>('/dashboard');
   return res.data;
+};
+
+export type Period = 'daily' | 'weekly' | 'monthly' | 'general';
+
+export interface Todo {
+  id: string;
+  title: string;
+  period: Period;
+  done: boolean;
+  created_at: string;
+}
+
+export const getTodos = async (): Promise<Todo[]> => {
+  const res = await api.get<Todo[]>('/todos');
+  return res.data;
+};
+
+export const addTodo = async (title: string, period: Period): Promise<Todo> => {
+  const res = await api.post<Todo>('/todos', { title, period });
+  return res.data;
+};
+
+export const updateTodo = async (
+  id: string,
+  updates: Partial<Pick<Todo, 'title' | 'done'>>
+): Promise<Todo> => {
+  const res = await api.put<Todo>(`/todos/${id}`, updates);
+  return res.data;
+};
+
+export const deleteTodo = async (id: string): Promise<void> => {
+  await api.delete(`/todos/${id}`);
 };

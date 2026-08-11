@@ -1,13 +1,11 @@
 import { useState } from 'react';
 import { getExpenses, getDashboard, Expense } from '../services/api';
+import { fmtBirr } from '../utils/currency';
 
 interface Msg {
   from: 'user' | 'bot';
   text: string;
 }
-
-const fmt = (n: number) =>
-  `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 async function answer(q: string): Promise<string> {
   const query = q.toLowerCase();
@@ -26,20 +24,20 @@ async function answer(q: string): Promise<string> {
     const month = /month/.test(query);
     const total = month ? dash.monthExpense : dash.expenseTotal;
     return month
-      ? `You spent ${fmt(total)} this month.`
-      : `You have spent ${fmt(total)} in total.`;
+      ? `You spent ${fmtBirr(total)} this month.`
+      : `You have spent ${fmtBirr(total)} in total.`;
   }
 
   if (/earn|income|salary|made|receive/.test(query)) {
     const month = /month/.test(query);
     const total = month ? dash.monthIncome : dash.incomeTotal;
     return month
-      ? `You earned ${fmt(total)} this month.`
-      : `You have earned ${fmt(total)} in total.`;
+      ? `You earned ${fmtBirr(total)} this month.`
+      : `You have earned ${fmtBirr(total)} in total.`;
   }
 
   if (/balance|left|saved|net/.test(query)) {
-    return `Your balance is ${fmt(dash.balance)} (${dash.balance >= 0 ? 'positive' : 'negative'}).`;
+    return `Your balance is ${fmtBirr(dash.balance)} (${dash.balance >= 0 ? 'positive' : 'negative'}).`;
   }
 
   if (/count|how many|number of|transactions/.test(query)) {
@@ -52,14 +50,14 @@ async function answer(q: string): Promise<string> {
   if (catMatch && /on |spend on|for |category|how much/.test(query)) {
     const cat = catMatch.category;
     const total = spentOn(expenses.filter((e) => e.category === cat));
-    return `You've spent ${fmt(total)} on ${cat}.`;
+    return `You've spent ${fmtBirr(total)} on ${cat}.`;
   }
 
   if (/top|biggest|largest|most/.test(query) && /category|spending|expense/.test(query)) {
     if (dash.byCategory.length === 0) return 'No expense categories yet.';
     const top = dash.byCategory[0];
     const pct = dash.expenseTotal > 0 ? Math.round((top.total / dash.expenseTotal) * 100) : 0;
-    return `Your top spending category is ${top.category} at ${fmt(top.total)} (${pct}% of expenses).`;
+    return `Your top spending category is ${top.category} at ${fmtBirr(top.total)} (${pct}% of expenses).`;
   }
 
   if (/this month|monthly|this month's/.test(query) && /top|biggest|most/.test(query)) {
@@ -72,7 +70,7 @@ async function answer(q: string): Promise<string> {
     monthExpenses.forEach((e) => byCat.set(e.category, (byCat.get(e.category) || 0) + e.amount));
     if (byCat.size === 0) return 'No expenses recorded this month yet.';
     const top = [...byCat.entries()].sort((a, b) => b[1] - a[1])[0];
-    return `Your top category this month is ${top[0]} at ${fmt(top[1])}.`;
+    return `Your top category this month is ${top[0]} at ${fmtBirr(top[1])}.`;
   }
 
   if (/help|what can|do you|\/?$/.test(query) || query.trim() === '') {
