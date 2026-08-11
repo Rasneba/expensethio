@@ -36,7 +36,9 @@ interface Expense {
 app.get('/api/expenses', async (req, res) => {
   try {
     const expenses = await db`
-      SELECT * FROM expenses ORDER BY date DESC, created_at DESC
+      SELECT id, amount, category, description, date::text as date, created_at
+      FROM expenses
+      ORDER BY date DESC, created_at DESC
     `;
     res.json(expenses);
   } catch (error) {
@@ -50,7 +52,7 @@ app.post('/api/expenses', async (req, res) => {
     const result = await db`
       INSERT INTO expenses (amount, category, description, date)
       VALUES (${Number(amount)}, ${category}, ${description || ''}, ${date})
-      RETURNING *
+      RETURNING id, amount, category, description, date::text as date, created_at
     `;
     res.status(201).json(result[0]);
   } catch (error) {
@@ -65,7 +67,7 @@ app.put('/api/expenses/:id', async (req, res) => {
     const result = await db`
       UPDATE expenses SET amount = ${amount}, category = ${category}, description = ${description}
       WHERE id = ${id}
-      RETURNING *
+      RETURNING id, amount, category, description, date::text as date, created_at
     `;
     res.json(result[0]);
   } catch (error) {
@@ -88,7 +90,7 @@ app.get('/api/dashboard', async (req, res) => {
     const [totalRow, monthRow, countRow, byCategory] = await Promise.all([
       db`SELECT COALESCE(SUM(amount), 0) as total FROM expenses`,
       db`
-        SELECT COALESCE(SUM(amount), 0) as monthTotal
+        SELECT COALESCE(SUM(amount), 0) as monthtotal
         FROM expenses
         WHERE date >= DATE_TRUNC('month', CURRENT_DATE)
       `,
@@ -102,7 +104,7 @@ app.get('/api/dashboard', async (req, res) => {
     ]);
     res.json({
       total: Number(totalRow[0].total),
-      monthTotal: Number(monthRow[0].monthTotal),
+      monthTotal: Number(monthRow[0].monthtotal),
       count: Number(countRow[0].count),
       byCategory: byCategory.map((c) => ({
         category: c.category,

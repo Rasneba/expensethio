@@ -55,7 +55,7 @@ export default function ExpenseList() {
           <tbody>
             {expenses.map((expense) => (
               <tr key={expense.id}>
-                <td>{new Date(expense.date).toLocaleDateString()}</td>
+                <td>{new Date(expense.date + 'T00:00:00').toLocaleDateString()}</td>
                 <td>{expense.category}</td>
                 <td>{expense.description}</td>
                 <td style={{ textAlign: 'right', fontWeight: 600 }}>
