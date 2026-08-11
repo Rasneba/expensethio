@@ -49,3 +49,14 @@ CREATE TABLE IF NOT EXISTS todos (
 );
 
 CREATE INDEX IF NOT EXISTS idx_todos_period ON todos (period);
+
+CREATE TABLE IF NOT EXISTS budgets (
+  id BIGSERIAL PRIMARY KEY,
+  category TEXT NOT NULL,
+  amount NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+  month DATE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (category, month)
+);
+
+CREATE INDEX IF NOT EXISTS idx_budgets_month ON budgets (month DESC);

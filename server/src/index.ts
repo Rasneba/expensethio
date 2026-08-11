@@ -488,6 +488,189 @@ app.delete('/api/credits/:id', async (req, res) => {
 });
 
 /* ───────────────────────────────────────
+   REPORTS & MONTHLY BUDGETS
+   ─────────────────────────────────────── */
+
+function validMonth(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+}
+
+function reportDateWhere(query: Record<string, unknown>, alias = ''): { sql: string; params: unknown[] } {
+  const column = `${alias}date`;
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  const from = typeof query.from === 'string' && !isNaN(Date.parse(query.from)) ? query.from : '';
+  const to = typeof query.to === 'string' && !isNaN(Date.parse(query.to)) ? query.to : '';
+
+  if (from) {
+    params.push(from);
+    clauses.push(`${column} >= $${params.length}`);
+  }
+  if (to) {
+    params.push(to);
+    clauses.push(`${column} <= $${params.length}`);
+  }
+  if (!from && !to) {
+    const period = query.period;
+    if (period === 'week') clauses.push(`${column} >= CURRENT_DATE - INTERVAL '6 days'`);
+    if (period === 'month') clauses.push(`${column} >= DATE_TRUNC('month', CURRENT_DATE)`);
+    if (period === 'year') clauses.push(`${column} >= DATE_TRUNC('year', CURRENT_DATE)`);
+  }
+  return { sql: clauses.length ? ` AND ${clauses.join(' AND ')}` : '', params };
+}
+
+app.get('/api/budgets', async (req, res) => {
+  try {
+    const month = validMonth(req.query.month) ? req.query.month : undefined;
+    const rows = month
+      ? await db`SELECT id, category, amount, to_char(month, 'YYYY-MM') AS month, created_at FROM budgets WHERE month = ${`${month}-01`} ORDER BY category`
+      : await db`SELECT id, category, amount, to_char(month, 'YYYY-MM') AS month, created_at FROM budgets ORDER BY month DESC, category`;
+    res.json(rows.map((row) => ({ ...row, id: String(row.id), amount: Number(row.amount) })));
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch budgets. Make sure the latest database schema is applied.' });
+  }
+});
+
+app.post('/api/budgets', async (req, res) => {
+  try {
+    const category = typeof req.body.category === 'string' ? req.body.category.trim() : '';
+    const amount = Number(req.body.amount);
+    const month = req.body.month;
+    if (!category) return res.status(400).json({ error: 'category is required' });
+    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'amount must be a positive number' });
+    if (!validMonth(month)) return res.status(400).json({ error: 'month must use YYYY-MM format' });
+
+    const rows = await db`
+      INSERT INTO budgets (category, amount, month)
+      VALUES (${category}, ${amount}, ${`${month}-01`})
+      ON CONFLICT (category, month) DO UPDATE SET amount = EXCLUDED.amount
+      RETURNING id, category, amount, to_char(month, 'YYYY-MM') AS month, created_at
+    `;
+    const row = rows[0];
+    res.status(201).json({ ...row, id: String(row.id), amount: Number(row.amount) });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to save budget' });
+  }
+});
+
+app.delete('/api/budgets/:id', async (req, res) => {
+  try {
+    const rows = await db`DELETE FROM budgets WHERE id = ${req.params.id} RETURNING id`;
+    if (!rows[0]) return res.status(404).json({ error: 'Budget not found' });
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete budget' });
+  }
+});
+
+app.get('/api/reports', async (req, res) => {
+  try {
+    const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
+    const method = req.query.method === 'cash' || req.query.method === 'mobile' ? req.query.method : '';
+    const selectedMonth = validMonth(req.query.month) ? req.query.month : new Date().toISOString().slice(0, 7);
+    const dateFilter = reportDateWhere(req.query as Record<string, unknown>);
+    const txClauses = [dateFilter.sql];
+    const txParams = [...dateFilter.params];
+    if (category) {
+      txParams.push(category);
+      txClauses.push(` AND category = $${txParams.length}`);
+    }
+    if (method) {
+      txParams.push(method);
+      txClauses.push(` AND method = $${txParams.length}`);
+    }
+    const txFilter = txClauses.join('');
+    const creditFilter = reportDateWhere(req.query as Record<string, unknown>);
+
+    const [totals, expenseCategories, expenseMethods, incomeSources, transactions, creditTotals, creditHistory, monthlyTotals, monthlyCreditTotals, monthlyCategories, monthBudgets] = await Promise.all([
+      db.query(`SELECT
+        COALESCE(SUM(amount) FILTER (WHERE type = 'income'), 0) AS income,
+        COALESCE(SUM(amount) FILTER (WHERE type = 'expense'), 0) AS expense,
+        COUNT(*) FILTER (WHERE type = 'income') AS income_count,
+        COUNT(*) FILTER (WHERE type = 'expense') AS expense_count,
+        COALESCE(AVG(amount) FILTER (WHERE type = 'expense'), 0) AS expense_average,
+        COALESCE(MAX(amount) FILTER (WHERE type = 'expense'), 0) AS expense_largest
+        FROM expenses WHERE 1=1 ${txFilter}`, txParams),
+      db.query(`SELECT category, SUM(amount) AS total, COUNT(*) AS count FROM expenses WHERE type = 'expense' ${txFilter} GROUP BY category ORDER BY total DESC`, txParams),
+      db.query(`SELECT method, SUM(amount) AS total, COUNT(*) AS count FROM expenses WHERE type = 'expense' ${txFilter} GROUP BY method ORDER BY total DESC`, txParams),
+      db.query(`SELECT category AS source, SUM(amount) AS total, COUNT(*) AS count FROM expenses WHERE type = 'income' ${txFilter} GROUP BY category ORDER BY total DESC`, txParams),
+      db.query(`SELECT ${EXPENSE_RETURNING} FROM expenses WHERE 1=1 ${txFilter} ORDER BY date DESC, created_at DESC LIMIT 100`, txParams),
+      db.query(`SELECT
+        COALESCE(SUM(amount) FILTER (WHERE type = 'borrow'), 0) AS borrowed,
+        COALESCE(SUM(amount) FILTER (WHERE type = 'payment'), 0) AS paid,
+        COUNT(*) FILTER (WHERE type = 'borrow' AND due_date < CURRENT_DATE) AS overdue_count,
+        COUNT(*) FILTER (WHERE type = 'borrow' AND due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7) AS due_soon_count,
+        COALESCE(SUM(amount) FILTER (WHERE type = 'borrow' AND due_date < CURRENT_DATE), 0) AS overdue_borrowed
+        FROM credits WHERE 1=1 ${creditFilter.sql}`, creditFilter.params),
+      db.query(`SELECT ${CREDIT_RETURNING} FROM credits WHERE 1=1 ${creditFilter.sql} ORDER BY date DESC, created_at DESC LIMIT 100`, creditFilter.params),
+      db.query(`SELECT
+        COALESCE(SUM(amount) FILTER (WHERE type = 'income'), 0) AS income,
+        COALESCE(SUM(amount) FILTER (WHERE type = 'expense'), 0) AS expense
+        FROM expenses WHERE date >= $1::date AND date < ($1::date + INTERVAL '1 month')`, [`${selectedMonth}-01`]),
+      db.query(`SELECT COALESCE(SUM(amount) FILTER (WHERE type = 'payment'), 0) AS payments FROM credits WHERE date >= $1::date AND date < ($1::date + INTERVAL '1 month')`, [`${selectedMonth}-01`]),
+      db.query(`SELECT category, SUM(amount) AS total FROM expenses WHERE type = 'expense' AND date >= $1::date AND date < ($1::date + INTERVAL '1 month') GROUP BY category ORDER BY total DESC`, [`${selectedMonth}-01`]),
+      db.query(`SELECT id, category, amount, to_char(month, 'YYYY-MM') AS month, created_at FROM budgets WHERE month = $1::date ORDER BY category`, [`${selectedMonth}-01`]),
+    ]);
+
+    const total = totals[0];
+    const credit = creditTotals[0];
+    const income = Number(total.income);
+    const expense = Number(total.expense);
+    const borrowed = Number(credit.borrowed);
+    const paid = Number(credit.paid);
+    const outstanding = Math.max(borrowed - paid, 0);
+    const monthlyIncome = Number(monthlyTotals[0].income);
+    const monthlyExpense = Number(monthlyTotals[0].expense);
+    const monthlyCreditPayments = Number(monthlyCreditTotals[0].payments);
+    const actualByCategory = new Map(monthlyCategories.map((row) => [String(row.category), Number(row.total)]));
+    const budgets = monthBudgets.map((row) => {
+      const planned = Number(row.amount);
+      const actual = actualByCategory.get(String(row.category)) || 0;
+      return { id: String(row.id), category: String(row.category), amount: planned, month: String(row.month), actual, percentage: planned ? (actual / planned) * 100 : 0 };
+    });
+
+    res.json({
+      overview: { income, expense, borrowed, creditPaid: paid, creditOwed: outstanding, availableBalance: income + borrowed - expense - paid },
+      expense: {
+        total: expense,
+        count: Number(total.expense_count),
+        average: Number(total.expense_average),
+        largest: Number(total.expense_largest),
+        byCategory: expenseCategories.map((r) => ({ category: String(r.category), total: Number(r.total), count: Number(r.count) })),
+        byMethod: expenseMethods.map((r) => ({ method: String(r.method), total: Number(r.total), count: Number(r.count) })),
+        transactions: transactions.filter((r) => r.type === 'expense').map(parseExpense),
+      },
+      income: {
+        total: income,
+        count: Number(total.income_count),
+        bySource: incomeSources.map((r) => ({ source: String(r.source), total: Number(r.total), count: Number(r.count) })),
+        transactions: transactions.filter((r) => r.type === 'income').map(parseExpense),
+      },
+      credit: {
+        borrowed, paid, outstanding,
+        overdueAmount: Math.min(Number(credit.overdue_borrowed), outstanding),
+        overdueCount: Number(credit.overdue_count),
+        dueSoonCount: Number(credit.due_soon_count),
+        history: creditHistory.map(parseCredit),
+      },
+      monthly: {
+        month: selectedMonth,
+        income: monthlyIncome,
+        expense: monthlyExpense,
+        creditPayments: monthlyCreditPayments,
+        remaining: monthlyIncome - monthlyExpense - monthlyCreditPayments,
+        byCategory: monthlyCategories.map((r) => ({ category: String(r.category), total: Number(r.total) })),
+        budgets,
+      },
+      budgets,
+    });
+  } catch (error) {
+    console.error('Report error', error);
+    res.status(500).json({ error: 'Failed to generate report. Make sure the latest database schema is applied.' });
+  }
+});
+
+/* ───────────────────────────────────────
    TODOS
    ─────────────────────────────────────── */
 

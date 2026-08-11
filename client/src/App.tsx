@@ -6,8 +6,9 @@ import Dashboard from './components/Dashboard';
 import Assistant from './components/Assistant';
 import Plans from './components/Plans';
 import CreditTab from './components/CreditTab';
+import Reports from './components/Reports';
 
-type View = 'dashboard' | 'expenses' | 'add' | 'plans' | 'credit' | 'assistant';
+type View = 'dashboard' | 'expenses' | 'add' | 'plans' | 'credit' | 'reports' | 'assistant';
 
 const viewConfig: Record<View, { icon: string; label: string }> = {
   dashboard: { icon: '📊', label: 'Dashboard' },
@@ -15,10 +16,11 @@ const viewConfig: Record<View, { icon: string; label: string }> = {
   add: { icon: '+', label: 'Add' },
   credit: { icon: '💳', label: 'Credit' },
   plans: { icon: '🗒️', label: 'Plans' },
+  reports: { icon: '📑', label: 'Reports' },
   assistant: { icon: '🤖', label: 'Assistant' },
 };
 
-const navItems: View[] = ['dashboard', 'expenses', 'add', 'credit', 'plans', 'assistant'];
+const navItems: View[] = ['dashboard', 'expenses', 'add', 'reports', 'credit', 'plans'];
 
 const pageVariants = {
   initial: { opacity: 0, y: 12 },
@@ -60,6 +62,8 @@ function App() {
         return <Plans key="plans" />;
       case 'credit':
         return <CreditTab key="credit" />;
+      case 'reports':
+        return <Reports key="reports" />;
       case 'assistant':
         return <Assistant key="assistant" />;
     }
@@ -73,6 +77,16 @@ function App() {
           <h1>ExpenseTracker</h1>
         </div>
         <div className="header-actions">
+          <motion.button
+            className="btn icon theme-toggle"
+            onClick={() => setView('assistant')}
+            title="Open assistant"
+            aria-label="Open assistant"
+            whileTap={{ scale: 0.9 }}
+            whileHover={{ scale: 1.05 }}
+          >
+            🤖
+          </motion.button>
           <motion.button
             className="btn icon theme-toggle"
             onClick={() => setDark((d) => !d)}

@@ -146,3 +146,94 @@ export const updateTodo = async (
 export const deleteTodo = async (id: string): Promise<void> => {
   await api.delete(`/todos/${id}`);
 };
+
+export type ReportPeriod = 'all' | 'week' | 'month' | 'year';
+
+export interface Budget {
+  id: string;
+  category: string;
+  amount: number;
+  month: string;
+  created_at?: string;
+  actual?: number;
+  percentage?: number;
+}
+
+export interface ReportBreakdown {
+  category: string;
+  total: number;
+  count?: number;
+}
+
+export interface ReportsData {
+  overview: {
+    income: number;
+    expense: number;
+    borrowed: number;
+    creditPaid: number;
+    creditOwed: number;
+    availableBalance: number;
+  };
+  expense: {
+    total: number;
+    count: number;
+    average: number;
+    largest: number;
+    byCategory: ReportBreakdown[];
+    byMethod: Array<{ method: string; total: number; count: number }>;
+    transactions: Expense[];
+  };
+  income: {
+    total: number;
+    count: number;
+    bySource: Array<{ source: string; total: number; count: number }>;
+    transactions: Expense[];
+  };
+  credit: {
+    borrowed: number;
+    paid: number;
+    outstanding: number;
+    overdueAmount: number;
+    overdueCount: number;
+    dueSoonCount: number;
+    history: Credit[];
+  };
+  monthly: {
+    month: string;
+    income: number;
+    expense: number;
+    creditPayments: number;
+    remaining: number;
+    byCategory: ReportBreakdown[];
+    budgets: Budget[];
+  };
+  budgets: Budget[];
+}
+
+export interface ReportFilters {
+  period?: ReportPeriod;
+  from?: string;
+  to?: string;
+  category?: string;
+  method?: TxMethod | '';
+  month?: string;
+}
+
+export const getReports = async (filters: ReportFilters = {}): Promise<ReportsData> => {
+  const res = await api.get<ReportsData>('/reports', { params: filters });
+  return res.data;
+};
+
+export const getBudgets = async (month?: string): Promise<Budget[]> => {
+  const res = await api.get<Budget[]>('/budgets', { params: { month } });
+  return res.data;
+};
+
+export const saveBudget = async (budget: Pick<Budget, 'category' | 'amount' | 'month'>): Promise<Budget> => {
+  const res = await api.post<Budget>('/budgets', budget);
+  return res.data;
+};
+
+export const deleteBudget = async (id: string): Promise<void> => {
+  await api.delete(`/budgets/${id}`);
+};
