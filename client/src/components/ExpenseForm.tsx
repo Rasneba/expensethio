@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { addExpense, updateExpense, Expense, TxType, TxCredit } from '../services/api';
+import { addExpense, updateExpense, addCredit, Expense, TxType, TxMethod } from '../services/api';
 
 interface Props {
   onSuccess: () => void;
   initial?: Expense | null;
 }
+
+type Mode = TxType | 'credit';
 
 const EXPENSE_CATEGORIES = [
   'Food & Dining',
@@ -30,21 +32,21 @@ const INCOME_CATEGORIES = [
 
 export default function ExpenseForm({ onSuccess, initial }: Props) {
   const editing = !!initial;
-  const [type, setType] = useState<TxType>(initial?.type || 'expense');
+  const [mode, setMode] = useState<Mode>(initial?.type || 'expense');
   const [amount, setAmount] = useState(initial ? String(initial.amount) : '');
   const [category, setCategory] = useState(initial?.category || EXPENSE_CATEGORIES[0]);
   const [description, setDescription] = useState(initial?.description || '');
   const [date, setDate] = useState(initial?.date || new Date().toISOString().split('T')[0]);
-  const [credit, setCredit] = useState<TxCredit>(initial?.credit || 'none');
+  const [method, setMethod] = useState<TxMethod>(initial?.method || 'cash');
+  const [creditType, setCreditType] = useState<'borrow' | 'payment'>('borrow');
   const [error, setError] = useState('');
 
-  const categories = type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const categories = mode === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
 
-  const switchType = (t: TxType) => {
-    setType(t);
-    if (!categories.includes(category)) {
-      setCategory((t === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES)[0]);
-    }
+  const switchMode = (m: Mode) => {
+    setMode(m);
+    if (m === 'income') setCategory((prev) => (INCOME_CATEGORIES.includes(prev) ? prev : INCOME_CATEGORIES[0]));
+    if (m === 'expense') setCategory((prev) => (EXPENSE_CATEGORIES.includes(prev) ? prev : EXPENSE_CATEGORIES[0]));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -61,24 +63,40 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
       return;
     }
 
-    const payload = {
-      type,
-      amount: numAmount,
-      category,
-      description: description.trim() || category,
-      date,
-      credit,
-    };
-
     try {
-      if (editing && initial) {
-        await updateExpense(initial.id, payload);
+      if (mode === 'credit') {
+        if (editing && initial) {
+          setError('Credit entries cannot be edited here. Delete and re-add instead.');
+          return;
+        }
+        await addCredit({
+          type: creditType,
+          amount: numAmount,
+          description: description.trim() || (creditType === 'borrow' ? 'Credit borrowed' : 'Credit payment'),
+          date,
+        });
+      } else if (editing && initial) {
+        await updateExpense(initial.id, {
+          type: mode,
+          amount: numAmount,
+          category,
+          description: description.trim() || category,
+          date,
+          method,
+        });
       } else {
-        await addExpense(payload);
+        await addExpense({
+          type: mode,
+          amount: numAmount,
+          category,
+          description: description.trim() || category,
+          date,
+          method,
+        });
       }
       onSuccess();
-    } catch (err) {
-      setError(editing ? 'Failed to update. Please try again.' : 'Failed to add. Please try again.');
+    } catch {
+      setError('Failed to save. Please try again.');
     }
   };
 
@@ -89,21 +107,47 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
       <div className="type-toggle">
         <button
           type="button"
-          className={type === 'expense' ? 'active expense' : ''}
-          onClick={() => switchType('expense')}
+          className={mode === 'expense' ? 'active expense' : ''}
+          onClick={() => switchMode('expense')}
         >
           − Expense
         </button>
         <button
           type="button"
-          className={type === 'income' ? 'active income' : ''}
-          onClick={() => switchType('income')}
+          className={mode === 'income' ? 'active income' : ''}
+          onClick={() => switchMode('income')}
         >
           + Income
+        </button>
+        <button
+          type="button"
+          className={mode === 'credit' ? 'active credit' : ''}
+          onClick={() => switchMode('credit')}
+        >
+          💳 Credit
         </button>
       </div>
 
       <form onSubmit={handleSubmit}>
+        {mode === 'credit' && (
+          <div className="type-toggle sub">
+            <button
+              type="button"
+              className={creditType === 'borrow' ? 'active expense' : ''}
+              onClick={() => setCreditType('borrow')}
+            >
+              Borrowed (owed)
+            </button>
+            <button
+              type="button"
+              className={creditType === 'payment' ? 'active income' : ''}
+              onClick={() => setCreditType('payment')}
+            >
+              Paying off
+            </button>
+          </div>
+        )}
+
         <div className="field">
           <label>Amount (Br)</label>
           <input
@@ -117,14 +161,26 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
           />
         </div>
 
-        <div className="field">
-          <label>Category</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
-        </div>
+        {mode !== 'credit' && (
+          <>
+            <div className="field">
+              <label>Category</label>
+              <select value={category} onChange={(e) => setCategory(e.target.value)}>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label>Payment Method</label>
+              <select value={method} onChange={(e) => setMethod(e.target.value as TxMethod)}>
+                <option value="cash">💵 Cash</option>
+                <option value="mobile">📱 Mobile</option>
+              </select>
+            </div>
+          </>
+        )}
 
         <div className="field">
           <label>Description</label>
@@ -132,17 +188,16 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder={type === 'income' ? 'e.g. Monthly salary' : 'e.g. Groceries, Gas...'}
+            placeholder={
+              mode === 'credit'
+                ? creditType === 'borrow'
+                  ? 'e.g. Borrowed from friend'
+                  : 'e.g. Paid back loan'
+                : mode === 'income'
+                ? 'e.g. Monthly salary'
+                : 'e.g. Groceries, Gas...'
+            }
           />
-        </div>
-
-        <div className="field">
-          <label>Payment Method</label>
-          <select value={credit} onChange={(e) => setCredit(e.target.value as TxCredit)}>
-            <option value="none">Cash / Card</option>
-            <option value="purchase">On Credit (borrowed)</option>
-            <option value="payment">Credit Payment (pay off credit)</option>
-          </select>
         </div>
 
         <div className="field">

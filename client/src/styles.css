@@ -186,6 +186,20 @@ body {
   color: var(--income);
 }
 
+.type-toggle button.active.credit {
+  background: #ede9fe;
+  color: #7c3aed;
+}
+
+html.dark .type-toggle button.active.credit {
+  background: #2a2140;
+  color: #a78bfa;
+}
+
+.type-toggle.sub {
+  margin-bottom: 16px;
+}
+
 .field {
   margin-bottom: 16px;
 }
@@ -229,7 +243,7 @@ body {
 /* ---------- Dashboard ---------- */
 .cards {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 14px;
 }
 
@@ -363,6 +377,16 @@ body {
 .credit-badge.payment {
   background: var(--income-soft);
   color: var(--income);
+}
+
+.credit-badge.method-mobile {
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.credit-badge.method-cash {
+  background: var(--bg);
+  color: var(--muted);
 }
 
 html.dark .credit-badge.purchase {
@@ -753,7 +777,6 @@ html.dark .credit-badge.purchase {
     grid-template-columns: 1fr;
   }
 }
-
 @media (max-width: 520px) {
   .app {
     padding: 12px;

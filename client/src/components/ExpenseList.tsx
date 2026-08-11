@@ -53,8 +53,8 @@ export default function ExpenseList({ refreshKey = 0 }: Props) {
   if (loading) return <p className="muted">Loading transactions...</p>;
   if (error) return <p className="error-text">{error}</p>;
 
-  const creditLabel = (c: string) =>
-    c === 'purchase' ? '🟠 Credit' : c === 'payment' ? '🟢 Credit payment' : null;
+  const methodBadge = (m: string) =>
+    m === 'mobile' ? '📱 Mobile' : '💵 Cash';
 
   return (
     <div>
@@ -98,9 +98,7 @@ export default function ExpenseList({ refreshKey = 0 }: Props) {
               <div className="tx-main">
                 <div className="tx-cat">
                   {expense.category}
-                  {creditLabel(expense.credit) && (
-                    <span className={`credit-badge ${expense.credit}`}>{creditLabel(expense.credit)}</span>
-                  )}
+                  <span className={`credit-badge method-${expense.method}`}>{methodBadge(expense.method)}</span>
                 </div>
                 <div className="tx-desc">
                   {expense.description && expense.description !== expense.category

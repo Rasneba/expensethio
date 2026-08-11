@@ -8,12 +8,23 @@ CREATE TABLE IF NOT EXISTS expenses (
   category TEXT NOT NULL,
   description TEXT DEFAULT '',
   date DATE NOT NULL DEFAULT CURRENT_DATE,
-  credit TEXT NOT NULL DEFAULT 'none' CHECK (credit IN ('none', 'purchase', 'payment')),
+  method TEXT NOT NULL DEFAULT 'cash' CHECK (method IN ('cash', 'mobile')),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses (date DESC);
 CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses (category);
+
+CREATE TABLE IF NOT EXISTS credits (
+  id BIGSERIAL PRIMARY KEY,
+  type TEXT NOT NULL CHECK (type IN ('borrow', 'payment')),
+  amount NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+  description TEXT DEFAULT '',
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_credits_date ON credits (date DESC);
 
 CREATE TABLE IF NOT EXISTS todos (
   id BIGSERIAL PRIMARY KEY,

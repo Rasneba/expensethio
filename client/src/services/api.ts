@@ -3,7 +3,7 @@ import axios from 'axios';
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 export type TxType = 'expense' | 'income';
-export type TxCredit = 'none' | 'purchase' | 'payment';
+export type TxMethod = 'cash' | 'mobile';
 
 export interface Expense {
   id: string;
@@ -12,7 +12,18 @@ export interface Expense {
   category: string;
   description: string;
   date: string;
-  credit: TxCredit;
+  method: TxMethod;
+  created_at: string;
+}
+
+export type CreditType = 'borrow' | 'payment';
+
+export interface Credit {
+  id: string;
+  type: CreditType;
+  amount: number;
+  description: string;
+  date: string;
   created_at: string;
 }
 
@@ -69,6 +80,22 @@ export const updateExpense = async (
 
 export const deleteExpense = async (id: string): Promise<void> => {
   await api.delete(`/expenses/${id}`);
+};
+
+export const getCredits = async (): Promise<Credit[]> => {
+  const res = await api.get<Credit[]>('/credits');
+  return res.data;
+};
+
+export const addCredit = async (
+  credit: Omit<Credit, 'id' | 'created_at'>
+): Promise<Credit> => {
+  const res = await api.post<Credit>('/credits', credit);
+  return res.data;
+};
+
+export const deleteCredit = async (id: string): Promise<void> => {
+  await api.delete(`/credits/${id}`);
 };
 
 export const getDashboard = async (): Promise<DashboardData> => {

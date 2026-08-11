@@ -35,11 +35,20 @@ interface Expense {
   category: string;
   description: string;
   date: string;
-  credit: 'none' | 'purchase' | 'payment';
+  method: 'cash' | 'mobile';
   created_at: string;
 }
 
-const RETURNING = `id, type, amount, category, description, date::text as date, credit, created_at`;
+interface Credit {
+  id: string;
+  type: 'borrow' | 'payment';
+  amount: number;
+  description: string;
+  date: string;
+  created_at: string;
+}
+
+const RETURNING = `id, type, amount, category, description, date::text as date, method, created_at`;
 const RETURNING_RAW = () => new UnsafeRawSql(RETURNING);
 
 const PERIODS = ['daily', 'weekly', 'monthly', 'general'];
@@ -63,7 +72,7 @@ function parseTodo(row: Record<string, unknown>): Todo {
 }
 
 function parseExpense(row: Record<string, unknown>): Expense {
-  const credit = String(row.credit);
+  const method = String(row.method);
   return {
     id: String(row.id),
     type: row.type === 'income' ? 'income' : 'expense',
@@ -71,16 +80,20 @@ function parseExpense(row: Record<string, unknown>): Expense {
     category: String(row.category),
     description: String(row.description),
     date: String(row.date),
-    credit: credit === 'purchase' || credit === 'payment' ? credit : 'none',
+    method: method === 'mobile' ? 'mobile' : 'cash',
     created_at: String(row.created_at),
   };
 }
 
-function toCredit(value: unknown): 'none' | 'purchase' | 'payment' | null {
-  if (value === 'purchase') return 'purchase';
-  if (value === 'payment') return 'payment';
-  if (value === 'none' || value === undefined || value === null) return 'none';
-  return null;
+function parseCredit(row: Record<string, unknown>): Credit {
+  return {
+    id: String(row.id),
+    type: row.type === 'payment' ? 'payment' : 'borrow',
+    amount: Number(row.amount),
+    description: String(row.description),
+    date: String(row.date),
+    created_at: String(row.created_at),
+  };
 }
 
 function toType(value: unknown): 'expense' | 'income' | null {
@@ -89,8 +102,20 @@ function toType(value: unknown): 'expense' | 'income' | null {
   return null;
 }
 
+function toMethod(value: unknown): 'cash' | 'mobile' | null {
+  if (value === 'mobile') return 'mobile';
+  if (value === 'cash' || value === undefined || value === null) return 'cash';
+  return null;
+}
+
+function toCreditType(value: unknown): 'borrow' | 'payment' | null {
+  if (value === 'borrow') return 'borrow';
+  if (value === 'payment') return 'payment';
+  return null;
+}
+
 function validate(body: Record<string, unknown>, partial: boolean): string | null {
-  const { type, amount, category, description, date, credit } = body;
+  const { type, amount, category, description, date, method } = body;
 
   if (!partial) {
     if (amount === undefined) return 'amount is required';
@@ -114,8 +139,8 @@ function validate(body: Record<string, unknown>, partial: boolean): string | nul
   if (date !== undefined && (typeof date !== 'string' || isNaN(Date.parse(date)))) {
     return 'date must be a valid date';
   }
-  if (credit !== undefined && toCredit(credit) === null) {
-    return 'credit must be "none", "purchase", or "payment"';
+  if (method !== undefined && toMethod(method) === null) {
+    return 'method must be "cash" or "mobile"';
   }
   return null;
 }
@@ -135,7 +160,7 @@ app.get('/api/expenses', async (req, res) => {
     }
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const result = await db.query(
-      `SELECT id, type, amount, category, description, date::text as date, credit, created_at
+      `SELECT id, type, amount, category, description, date::text as date, method, created_at
        FROM expenses
        ${clause}
        ORDER BY date DESC, created_at DESC`,
@@ -154,10 +179,10 @@ app.post('/api/expenses', async (req, res) => {
       return res.status(400).json({ error: invalid });
     }
 
-    const { amount, category, description, date, type, credit } = req.body;
+    const { amount, category, description, date, type, method } = req.body;
     const result = await db`
-      INSERT INTO expenses (type, amount, category, description, date, credit)
-      VALUES (${toType(type)}, ${Number(amount)}, ${String(category)}, ${description ? String(description) : ''}, ${String(date)}, ${toCredit(credit)})
+      INSERT INTO expenses (type, amount, category, description, date, method)
+      VALUES (${toType(type)}, ${Number(amount)}, ${String(category)}, ${description ? String(description) : ''}, ${String(date)}, ${toMethod(method)})
       RETURNING ${RETURNING_RAW()}
     `;
     res.status(201).json(parseExpense(result[0]));
@@ -174,7 +199,7 @@ app.put('/api/expenses/:id', async (req, res) => {
       return res.status(400).json({ error: invalid });
     }
 
-    const { amount, category, description, date, type, credit } = req.body;
+    const { amount, category, description, date, type, method } = req.body;
     const sets: string[] = [];
     const params: unknown[] = [];
     if (type !== undefined) {
@@ -197,9 +222,9 @@ app.put('/api/expenses/:id', async (req, res) => {
       params.push(String(date));
       sets.push(`date = $${params.length}`);
     }
-    if (credit !== undefined) {
-      params.push(toCredit(credit));
-      sets.push(`credit = $${params.length}`);
+    if (method !== undefined) {
+      params.push(toMethod(method));
+      sets.push(`method = $${params.length}`);
     }
     if (sets.length === 0) {
       return res.status(400).json({ error: 'Nothing to update' });
@@ -268,10 +293,9 @@ app.get('/api/dashboard', async (req, res) => {
       `,
       db`
         SELECT
-          COALESCE(SUM(amount) FILTER (WHERE credit = 'purchase'), 0) as purchases,
-          COALESCE(SUM(amount) FILTER (WHERE credit = 'payment'), 0) as payments
-        FROM expenses
-        WHERE type = 'expense'
+          COALESCE(SUM(amount) FILTER (WHERE type = 'borrow'), 0) as borrowed,
+          COALESCE(SUM(amount) FILTER (WHERE type = 'payment'), 0) as payments
+        FROM credits
       `,
     ]);
 
@@ -284,14 +308,16 @@ app.get('/api/dashboard', async (req, res) => {
       byMonthMap.set(key, entry);
     }
 
+    const creditTotal = Number(creditRow[0].borrowed) - Number(creditRow[0].payments);
+
     res.json({
       expenseTotal: Number(expenseTotal[0].total),
       incomeTotal: Number(incomeTotal[0].total),
-      balance: Number(incomeTotal[0].total) - Number(expenseTotal[0].total),
+      balance: Number(incomeTotal[0].total) - Number(expenseTotal[0].total) + creditTotal,
       monthExpense: Number(monthExpense[0].total),
       monthIncome: Number(monthIncome[0].total),
-      monthBalance: Number(monthIncome[0].total) - Number(monthExpense[0].total),
-      creditTotal: Number(creditRow[0].purchases) - Number(creditRow[0].payments),
+      monthBalance: Number(monthIncome[0].total) - Number(monthExpense[0].total) + creditTotal,
+      creditTotal,
       count: Number(countRow[0].count),
       byCategory: byCategory.map((c) => ({
         category: c.category,
@@ -301,6 +327,110 @@ app.get('/api/dashboard', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch dashboard' });
+  }
+});
+
+app.get('/api/credits', async (req, res) => {
+  try {
+    const credits = await db`
+      SELECT id, type, amount, description, date::text as date, created_at
+      FROM credits
+      ORDER BY date DESC, created_at DESC
+    `;
+    res.json(credits.map(parseCredit));
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch credits' });
+  }
+});
+
+app.post('/api/credits', async (req, res) => {
+  try {
+    const { type, amount, description, date } = req.body;
+    const t = toCreditType(type);
+    if (t === null) {
+      return res.status(400).json({ error: 'type must be "borrow" or "payment"' });
+    }
+    const n = Number(amount);
+    if (!Number.isFinite(n) || n <= 0) {
+      return res.status(400).json({ error: 'amount must be a positive number' });
+    }
+    if (description !== undefined && typeof description !== 'string') {
+      return res.status(400).json({ error: 'description must be a string' });
+    }
+    if (typeof date !== 'string' || isNaN(Date.parse(date))) {
+      return res.status(400).json({ error: 'date must be a valid date' });
+    }
+    const result = await db`
+      INSERT INTO credits (type, amount, description, date)
+      VALUES (${t}, ${n}, ${description ? String(description) : ''}, ${String(date)})
+      RETURNING id, type, amount, description, date::text as date, created_at
+    `;
+    res.status(201).json(parseCredit(result[0]));
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create credit' });
+  }
+});
+
+app.put('/api/credits/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type, amount, description, date } = req.body;
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    if (type !== undefined) {
+      const t = toCreditType(type);
+      if (t === null) {
+        return res.status(400).json({ error: 'type must be "borrow" or "payment"' });
+      }
+      params.push(t);
+      sets.push(`type = $${params.length}`);
+    }
+    if (amount !== undefined) {
+      const n = Number(amount);
+      if (!Number.isFinite(n) || n <= 0) {
+        return res.status(400).json({ error: 'amount must be a positive number' });
+      }
+      params.push(n);
+      sets.push(`amount = $${params.length}`);
+    }
+    if (description !== undefined) {
+      if (typeof description !== 'string') {
+        return res.status(400).json({ error: 'description must be a string' });
+      }
+      params.push(description);
+      sets.push(`description = $${params.length}`);
+    }
+    if (date !== undefined) {
+      if (typeof date !== 'string' || isNaN(Date.parse(date))) {
+        return res.status(400).json({ error: 'date must be a valid date' });
+      }
+      params.push(date);
+      sets.push(`date = $${params.length}`);
+    }
+    if (sets.length === 0) {
+      return res.status(400).json({ error: 'Nothing to update' });
+    }
+    params.push(id);
+    const result = await db.query(
+      `UPDATE credits SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id, type, amount, description, date::text as date, created_at`,
+      params
+    );
+    if (!result[0]) {
+      return res.status(404).json({ error: 'Credit not found' });
+    }
+    res.json(parseCredit(result[0]));
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update credit' });
+  }
+});
+
+app.delete('/api/credits/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db`DELETE FROM credits WHERE id = ${id}`;
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete credit' });
   }
 });
 
