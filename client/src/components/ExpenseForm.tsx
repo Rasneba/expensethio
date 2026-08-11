@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { addExpense, Expense } from '../services/api';
+import { addExpense, updateExpense, Expense, TxType } from '../services/api';
 
 interface Props {
   onSuccess: () => void;
+  initial?: Expense | null;
 }
 
-const CATEGORIES = [
+const EXPENSE_CATEGORIES = [
   'Food & Dining',
   'Transportation',
   'Shopping',
@@ -18,12 +19,32 @@ const CATEGORIES = [
   'Other',
 ];
 
-export default function ExpenseForm({ onSuccess }: Props) {
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState(CATEGORIES[0]);
-  const [description, setDescription] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+const INCOME_CATEGORIES = [
+  'Salary',
+  'Freelance',
+  'Business',
+  'Investment',
+  'Gift',
+  'Other',
+];
+
+export default function ExpenseForm({ onSuccess, initial }: Props) {
+  const editing = !!initial;
+  const [type, setType] = useState<TxType>(initial?.type || 'expense');
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : '');
+  const [category, setCategory] = useState(initial?.category || EXPENSE_CATEGORIES[0]);
+  const [description, setDescription] = useState(initial?.description || '');
+  const [date, setDate] = useState(initial?.date || new Date().toISOString().split('T')[0]);
   const [error, setError] = useState('');
+
+  const categories = type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+
+  const switchType = (t: TxType) => {
+    setType(t);
+    if (!categories.includes(category)) {
+      setCategory((t === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES)[0]);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,25 +60,50 @@ export default function ExpenseForm({ onSuccess }: Props) {
       return;
     }
 
+    const payload = {
+      type,
+      amount: numAmount,
+      category,
+      description: description.trim() || category,
+      date,
+    };
+
     try {
-      await addExpense({
-        amount: numAmount,
-        category,
-        description: description.trim() || category,
-        date,
-      });
+      if (editing && initial) {
+        await updateExpense(initial.id, payload);
+      } else {
+        await addExpense(payload);
+      }
       onSuccess();
     } catch (err) {
-      setError('Failed to add expense. Please try again.');
+      setError(editing ? 'Failed to update. Please try again.' : 'Failed to add. Please try again.');
     }
   };
 
   return (
-    <div>
-      <h2 style={styles.title}>Add New Expense</h2>
-      <form onSubmit={handleSubmit} style={styles.form}>
-        <div style={styles.field}>
-          <label style={styles.label}>Amount ($)</label>
+    <div className="card form-card">
+      <h2>{editing ? 'Edit Transaction' : 'Add Transaction'}</h2>
+
+      <div className="type-toggle">
+        <button
+          type="button"
+          className={type === 'expense' ? 'active expense' : ''}
+          onClick={() => switchType('expense')}
+        >
+          − Expense
+        </button>
+        <button
+          type="button"
+          className={type === 'income' ? 'active income' : ''}
+          onClick={() => switchType('income')}
+        >
+          + Income
+        </button>
+      </div>
+
+      <form onSubmit={handleSubmit}>
+        <div className="field">
+          <label>Amount</label>
           <input
             type="number"
             step="0.01"
@@ -65,76 +111,45 @@ export default function ExpenseForm({ onSuccess }: Props) {
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
-            style={styles.input}
             required
           />
         </div>
 
-        <div style={styles.field}>
-          <label style={styles.label}>Category</label>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            style={styles.input}
-          >
-            {CATEGORIES.map((cat) => (
+        <div className="field">
+          <label>Category</label>
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            {categories.map((cat) => (
               <option key={cat} value={cat}>{cat}</option>
             ))}
           </select>
         </div>
 
-        <div style={styles.field}>
-          <label style={styles.label}>Description</label>
+        <div className="field">
+          <label>Description</label>
           <input
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="e.g. Groceries, Gas, Netflix..."
-            style={styles.input}
+            placeholder={type === 'income' ? 'e.g. Monthly salary' : 'e.g. Groceries, Gas...'}
           />
         </div>
 
-        <div style={styles.field}>
-          <label style={styles.label}>Date</label>
+        <div className="field">
+          <label>Date</label>
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            style={styles.input}
             required
           />
         </div>
 
-        {error && <div style={styles.error}>{error}</div>}
+        {error && <div className="error-text">{error}</div>}
 
-        <button type="submit" style={styles.button}>
-          Save Expense
+        <button type="submit" className="btn primary">
+          {editing ? 'Save Changes' : 'Save Transaction'}
         </button>
       </form>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  title: { marginBottom: '20px' },
-  form: { display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '400px' },
-  field: { display: 'flex', flexDirection: 'column', gap: '6px' },
-  label: { fontWeight: 500, fontSize: '14px' },
-  input: {
-    padding: '10px 12px',
-    borderRadius: '6px',
-    border: '1px solid #ccc',
-    fontSize: '16px',
-  },
-  error: { color: '#d32f2f', fontSize: '14px' },
-  button: {
-    padding: '12px',
-    backgroundColor: '#4caf50',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
-    fontSize: '16px',
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-};

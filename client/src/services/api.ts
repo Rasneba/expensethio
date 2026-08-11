@@ -2,8 +2,11 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
+export type TxType = 'expense' | 'income';
+
 export interface Expense {
   id: string;
+  type: TxType;
   amount: number;
   category: string;
   description: string;
@@ -16,11 +19,22 @@ export interface CategoryTotal {
   total: number;
 }
 
+export interface MonthPoint {
+  month: string;
+  expense: number;
+  income: number;
+}
+
 export interface DashboardData {
-  total: number;
-  monthTotal: number;
+  expenseTotal: number;
+  incomeTotal: number;
+  balance: number;
+  monthExpense: number;
+  monthIncome: number;
+  monthBalance: number;
   count: number;
   byCategory: CategoryTotal[];
+  byMonth: MonthPoint[];
 }
 
 const api = axios.create({

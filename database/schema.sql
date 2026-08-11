@@ -3,6 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS expenses (
   id BIGSERIAL PRIMARY KEY,
+  type TEXT NOT NULL DEFAULT 'expense' CHECK (type IN ('expense', 'income')),
   amount NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
   category TEXT NOT NULL,
   description TEXT DEFAULT '',
