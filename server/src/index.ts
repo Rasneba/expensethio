@@ -51,12 +51,13 @@ interface Credit {
   date: string;
   due_date: string | null;
   creditor: string;
+  payoff_of: string | null;
   created_at: string;
 }
 
 const EXPENSE_RETURNING = `id, type, amount, category, description, date::text as date, method, created_at`;
 const EXPENSE_RETURNING_RAW = () => new UnsafeRawSql(EXPENSE_RETURNING);
-const CREDIT_RETURNING = `id, type, amount, description, date::text as date, due_date::text as due_date, creditor, created_at`;
+const CREDIT_RETURNING = `id, type, amount, description, date::text as date, due_date::text as due_date, creditor, payoff_of::text as payoff_of, created_at`;
 
 const PERIODS = ['daily', 'weekly', 'monthly', 'general'];
 
@@ -179,6 +180,7 @@ function parseCredit(row: Record<string, unknown>): Credit {
     date: String(row.date),
     due_date: row.due_date ? String(row.due_date) : null,
     creditor: String(row.creditor || ''),
+    payoff_of: row.payoff_of ? String(row.payoff_of) : null,
     created_at: String(row.created_at),
   };
 }
@@ -456,7 +458,7 @@ app.get('/api/dashboard', async (req, res) => {
 app.get('/api/credits', async (req, res) => {
   try {
     const credits = await db`
-      SELECT id, type, amount, description, date::text as date, due_date::text as due_date, creditor, created_at
+      SELECT id, type, amount, description, date::text as date, due_date::text as due_date, creditor, payoff_of::text as payoff_of, created_at
       FROM credits
       ORDER BY date DESC, created_at DESC
     `;
@@ -468,7 +470,7 @@ app.get('/api/credits', async (req, res) => {
 
 app.post('/api/credits', async (req, res) => {
   try {
-    const { type, amount, description, date, due_date, creditor } = req.body;
+    const { type, amount, description, date, due_date, creditor, payoff_of } = req.body;
     const t = toCreditType(type);
     if (t === null) {
       return res.status(400).json({ error: 'type must be "borrow" or "payment"' });
@@ -485,10 +487,11 @@ app.post('/api/credits', async (req, res) => {
     }
     const dueDateVal = due_date && typeof due_date === 'string' && !isNaN(Date.parse(due_date)) ? due_date : null;
     const creditorVal = creditor && typeof creditor === 'string' ? creditor.trim() : '';
+    const payoffOfVal = payoff_of && typeof payoff_of === 'string' && /^\d+$/.test(payoff_of) ? payoff_of : null;
 
     const result = await db`
-      INSERT INTO credits (type, amount, description, date, due_date, creditor)
-      VALUES (${t}, ${n}, ${description ? String(description) : ''}, ${String(date)}, ${dueDateVal}, ${creditorVal})
+      INSERT INTO credits (type, amount, description, date, due_date, creditor, payoff_of)
+      VALUES (${t}, ${n}, ${description ? String(description) : ''}, ${String(date)}, ${dueDateVal}, ${creditorVal}, ${payoffOfVal})
       RETURNING ${new UnsafeRawSql(CREDIT_RETURNING)}
     `;
     res.status(201).json(parseCredit(result[0]));
@@ -500,7 +503,7 @@ app.post('/api/credits', async (req, res) => {
 app.put('/api/credits/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { type, amount, description, date, due_date, creditor } = req.body;
+    const { type, amount, description, date, due_date, creditor, payoff_of } = req.body;
     const sets: string[] = [];
     const params: unknown[] = [];
     if (type !== undefined) {
@@ -541,6 +544,11 @@ app.put('/api/credits/:id', async (req, res) => {
     if (creditor !== undefined) {
       params.push(typeof creditor === 'string' ? creditor.trim() : '');
       sets.push(`creditor = $${params.length}`);
+    }
+    if (payoff_of !== undefined) {
+      const payoffOfVal = payoff_of && typeof payoff_of === 'string' && /^\d+$/.test(payoff_of) ? payoff_of : null;
+      params.push(payoffOfVal);
+      sets.push(`payoff_of = $${params.length}`);
     }
     if (sets.length === 0) {
       return res.status(400).json({ error: 'Nothing to update' });

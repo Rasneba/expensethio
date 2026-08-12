@@ -26,6 +26,7 @@ export interface Credit {
   date: string;
   due_date: string | null;
   creditor: string;
+  payoff_of: string | null;
   created_at: string;
 }
 

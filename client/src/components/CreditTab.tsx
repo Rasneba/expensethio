@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getCredits, addCredit, updateCredit, deleteCredit, Credit, CreditType } from '../services/api';
 import { fmtBirr } from '../utils/currency';
@@ -49,6 +49,11 @@ export default function CreditTab() {
   const [creditor, setCreditor] = useState('');
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [payAmount, setPayAmount] = useState('');
+  const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
+  const [payDescription, setPayDescription] = useState('');
+  const [paySaving, setPaySaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -81,6 +86,17 @@ export default function CreditTab() {
   const overdue = credits
     .filter((c) => c.type === 'borrow' && c.due_date && daysUntil(c.due_date) < 0);
 
+  const paidByCredit = new Map<string, number>();
+  for (const c of credits) {
+    if (c.type === 'payment' && c.payoff_of) {
+      paidByCredit.set(c.payoff_of, (paidByCredit.get(c.payoff_of) || 0) + c.amount);
+    }
+  }
+  const remainingByCredit = (b: Credit): number => {
+    if (b.type !== 'borrow') return 0;
+    return Math.max(b.amount - (paidByCredit.get(b.id) || 0), 0);
+  };
+
   const resetForm = () => {
     setAmount('');
     setDescription('');
@@ -105,6 +121,7 @@ export default function CreditTab() {
     setSaving(true);
     try {
       if (editingId) {
+        const current = credits.find((c) => c.id === editingId);
         await updateCredit(editingId, {
           type,
           amount: n,
@@ -112,6 +129,7 @@ export default function CreditTab() {
           date,
           due_date: dueDate || null,
           creditor: creditor.trim(),
+          payoff_of: current?.payoff_of ?? null,
         });
       } else {
         await addCredit({
@@ -121,6 +139,7 @@ export default function CreditTab() {
           date,
           due_date: dueDate || null,
           creditor: creditor.trim(),
+          payoff_of: null,
         });
       }
       resetForm();
@@ -153,6 +172,46 @@ export default function CreditTab() {
       if (editingId === id) resetForm();
     } catch {
       setError('Failed to delete credit entry');
+    }
+  };
+
+  const handlePayOffStart = (c: Credit) => {
+    setPayAmount(String(remainingByCredit(c) || c.amount));
+    setPayDate(new Date().toISOString().split('T')[0]);
+    setPayDescription('');
+    setError('');
+    setPayingId(c.id);
+  };
+
+  const handlePayOffSubmit = async (e: React.FormEvent, c: Credit) => {
+    e.preventDefault();
+    const n = parseFloat(payAmount);
+    if (isNaN(n) || n <= 0) {
+      setError('Enter a valid amount greater than 0');
+      return;
+    }
+    if (!payDate) {
+      setError('Select a date');
+      return;
+    }
+    setPaySaving(true);
+    try {
+      await addCredit({
+        type: 'payment',
+        amount: n,
+        description: payDescription.trim() || `Paid back ${c.creditor || 'loan'}`,
+        date: payDate,
+        due_date: null,
+        creditor: c.creditor || '',
+        payoff_of: c.id,
+      });
+      setPayingId(null);
+      setError('');
+      load();
+    } catch {
+      setError('Failed to record payment');
+    } finally {
+      setPaySaving(false);
     }
   };
 
@@ -358,54 +417,137 @@ export default function CreditTab() {
             }}
           >
             {credits.map((c) => (
-              <motion.div
-                key={c.id}
-                className="tx-row"
-                variants={{
-                  hidden: { opacity: 0, y: 10 },
-                  show: { opacity: 1, y: 0 },
-                }}
-                layout
-              >
-                <div className="tx-main">
-                  <div className="tx-cat">
-                    {c.creditor || (c.type === 'borrow' ? 'Borrowed' : 'Credit payment')}
-                    <span className={`credit-badge ${c.type === 'borrow' ? 'purchase' : 'payment'}`}>
-                      {c.type === 'borrow' ? 'owed' : 'paid'}
-                    </span>
-                    {c.due_date && c.type === 'borrow' && <DueBadge dueDate={c.due_date} />}
+              <Fragment key={c.id}>
+                <motion.div
+                  className="tx-row"
+                  variants={{
+                    hidden: { opacity: 0, y: 10 },
+                    show: { opacity: 1, y: 0 },
+                  }}
+                  layout
+                >
+                  <div className="tx-main">
+                    <div className="tx-cat">
+                      {c.creditor || (c.type === 'borrow' ? 'Borrowed' : 'Credit payment')}
+                      <span className={`credit-badge ${c.type === 'borrow' ? 'purchase' : 'payment'}`}>
+                        {c.type === 'borrow' ? 'owed' : 'paid'}
+                      </span>
+                      {c.due_date && c.type === 'borrow' && <DueBadge dueDate={c.due_date} />}
+                    </div>
+                    <div className="tx-desc">
+                      {c.description && c.description !== 'Credit borrowed' && c.description !== 'Credit payment'
+                        ? c.description
+                        : ''}
+                    </div>
+                    <div className="tx-date">
+                      {new Date(c.date + 'T00:00:00').toLocaleDateString()}
+                      {c.type === 'borrow' && (
+                        <span className="credit-remaining">
+                          {' · '}
+                          {remainingByCredit(c) > 0 ? `remaining ${fmtBirr(remainingByCredit(c))}` : 'paid off ✅'}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="tx-desc">
-                    {c.description && c.description !== 'Credit borrowed' && c.description !== 'Credit payment'
-                      ? c.description
-                      : ''}
+                  <div className={`tx-amount ${c.type === 'borrow' ? 'expense' : 'income'}`}>
+                    {c.type === 'borrow' ? `-${fmtBirr(c.amount)}` : `+${fmtBirr(c.amount)}`}
                   </div>
-                  <div className="tx-date">
-                    {new Date(c.date + 'T00:00:00').toLocaleDateString()}
+                  <div className="tx-actions">
+                    {c.type === 'borrow' && remainingByCredit(c) > 0 && (
+                      <motion.button
+                        className="btn pay-off-btn"
+                        onClick={() => handlePayOffStart(c)}
+                        title="Pay off this credit"
+                        whileTap={{ scale: 0.85 }}
+                      >
+                        💸 Pay off
+                      </motion.button>
+                    )}
+                    <motion.button
+                      className="btn icon"
+                      onClick={() => handleEdit(c)}
+                      title="Edit"
+                      whileTap={{ scale: 0.85 }}
+                    >
+                      ✏️
+                    </motion.button>
+                    <motion.button
+                      className="btn icon danger"
+                      onClick={() => handleDelete(c.id)}
+                      title="Delete"
+                      whileTap={{ scale: 0.85 }}
+                    >
+                      🗑️
+                    </motion.button>
                   </div>
-                </div>
-                <div className={`tx-amount ${c.type === 'borrow' ? 'expense' : 'income'}`}>
-                  {c.type === 'borrow' ? `-${fmtBirr(c.amount)}` : `+${fmtBirr(c.amount)}`}
-                </div>
-                <div className="tx-actions">
-                  <motion.button
-                    className="btn icon"
-                    onClick={() => handleEdit(c)}
-                    title="Edit"
-                    whileTap={{ scale: 0.85 }}
-                  >
-                    ✏️
-                  </motion.button>
-                  <motion.button
-                    className="btn icon danger"
-                    onClick={() => handleDelete(c.id)}
-                    title="Delete"
-                    whileTap={{ scale: 0.85 }}
-                  >
-                    🗑️
-                  </motion.button>
-                </div>
-              </motion.div>
+                </motion.div>
+                <AnimatePresence>
+                  {payingId === c.id && (
+                    <motion.div
+                      className="payoff-form"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.25 }}
+                    >
+                      <form onSubmit={(e) => handlePayOffSubmit(e, c)}>
+                        <div className="payoff-title">
+                          💸 Paying off {c.creditor || 'Unknown'}
+                          <span className="credit-remaining">
+                            (remaining {fmtBirr(remainingByCredit(c))})
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <div className="field payoff-field">
+                            <label>Amount (Br)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0.01"
+                              value={payAmount}
+                              onChange={(e) => setPayAmount(e.target.value)}
+                              placeholder="0.00"
+                              required
+                              style={{ fontSize: 16, fontWeight: 700 }}
+                            />
+                          </div>
+                          <div className="field payoff-field">
+                            <label>Date</label>
+                            <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} required />
+                          </div>
+                        </div>
+                        <div className="field payoff-field">
+                          <label>Description</label>
+                          <input
+                            type="text"
+                            value={payDescription}
+                            onChange={(e) => setPayDescription(e.target.value)}
+                            placeholder={`e.g. Paid back ${c.creditor || 'loan'}`}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <motion.button
+                            type="submit"
+                            className="btn primary payoff-save"
+                            disabled={paySaving}
+                            whileTap={{ scale: 0.98 }}
+                          >
+                            {paySaving ? 'Saving...' : 'Record Payment'}
+                          </motion.button>
+                          <motion.button
+                            type="button"
+                            className="btn"
+                            onClick={() => setPayingId(null)}
+                            whileTap={{ scale: 0.98 }}
+                          >
+                            Cancel
+                          </motion.button>
+                        </div>
+                      </form>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </Fragment>
             ))}
           </motion.div>
         )}

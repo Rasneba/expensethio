@@ -696,6 +696,54 @@ body {
 .tx-actions {
   display: flex;
   gap: 4px;
+  align-items: center;
+}
+
+.pay-off-btn {
+  padding: 6px 10px;
+  font-size: 13px;
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.pay-off-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.credit-remaining {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.payoff-form {
+  margin: 8px 0;
+  padding: 16px;
+  border: 1px solid var(--accent);
+  border-left: 3px solid var(--accent);
+  background: var(--bg-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.payoff-title {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.payoff-field {
+  margin-bottom: 14px;
+}
+
+.payoff-save {
+  flex: 1;
+  width: auto;
 }
 
 .recent-list {

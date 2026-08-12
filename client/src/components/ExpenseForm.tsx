@@ -80,6 +80,7 @@ export default function ExpenseForm({ onSuccess, initial }: Props) {
           date,
           due_date: null,
           creditor: '',
+          payoff_of: null,
         });
       } else if (editing && initial) {
         await updateExpense(initial.id, {

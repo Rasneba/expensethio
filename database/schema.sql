@@ -40,6 +40,16 @@ BEGIN
   END IF;
 END $$;
 
+-- Migration: link a payment to the borrow credit it pays off
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'credits' AND column_name = 'payoff_of') THEN
+    ALTER TABLE credits ADD COLUMN payoff_of BIGINT REFERENCES credits(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_credits_payoff_of ON credits (payoff_of) WHERE payoff_of IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS todos (
   id BIGSERIAL PRIMARY KEY,
   title TEXT NOT NULL,
