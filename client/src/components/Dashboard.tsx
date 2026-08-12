@@ -138,7 +138,7 @@ export default function Dashboard() {
           <div className="stat-icon">💰</div>
           <div className="card-label">Available Balance</div>
           <div className="card-value">{fmtBirr(stats.availableBalance)}</div>
-          <div className="card-sub">Income + Borrowed − Expenses − Payments</div>
+          <div className="card-sub">Income − Expenses (incl. payments)</div>
         </motion.div>
       </motion.div>
 
@@ -156,22 +156,8 @@ export default function Dashboard() {
             <span className="flow-value income">+{fmtBirr(stats.incomeTotal)}</span>
           </div>
           <div className="flow-row">
-            <span className="flow-label income">Borrowed (cash in)</span>
-            <span className="flow-value income">+{fmtBirr(stats.creditBorrowed)}</span>
-          </div>
-          <div className="flow-separator" />
-          <div className="flow-row">
-            <span className="flow-label">Total Available</span>
-            <span className="flow-value">{fmtBirr(stats.incomeTotal + stats.creditBorrowed)}</span>
-          </div>
-          <div className="flow-separator" />
-          <div className="flow-row">
-            <span className="flow-label expense">Expenses (money spent)</span>
+            <span className="flow-label expense">Expenses {stats.creditPayments > 0 ? '(incl. credit payments)' : '(money spent)'}</span>
             <span className="flow-value expense">−{fmtBirr(stats.expenseTotal)}</span>
-          </div>
-          <div className="flow-row">
-            <span className="flow-label expense">Credit Payments (money out)</span>
-            <span className="flow-value expense">−{fmtBirr(stats.creditPayments)}</span>
           </div>
           <div className="flow-separator" />
           <div className="flow-row flow-total">
@@ -186,6 +172,11 @@ export default function Dashboard() {
               <span className="flow-value" style={{ color: 'var(--warning)' }}>{fmtBirr(stats.creditOwed)}</span>
             </div>
           )}
+          <div className="flow-row">
+            <span className="flow-label" style={{ color: 'var(--muted)', fontSize: 12 }}>
+              Available = Income − Expenses (incl. payments). Borrowed not repaid is debt you owe, not spendable money.
+            </span>
+          </div>
         </div>
       </motion.div>
 

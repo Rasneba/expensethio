@@ -172,10 +172,10 @@ function Reports() {
               <h2>Financial flow</h2>
               <div className="report-flow">
                 <div><span>Income</span><strong className="income">+ {money(data.overview.income)}</strong></div>
-                <div><span>Borrowed</span><strong>+ {money(data.overview.borrowed)}</strong></div>
-                <div><span>Expenses</span><strong className="expense">− {money(data.overview.expense)}</strong></div>
-                <div><span>Credit payments</span><strong className="expense">− {money(data.overview.creditPaid)}</strong></div>
+                <div><span>Expenses (incl. credit payments)</span><strong className="expense">− {money(data.overview.expense)}</strong></div>
                 <div className="total"><span>Available balance</span><strong>{money(data.overview.availableBalance)}</strong></div>
+                <div><span>Borrowed (cash in)</span><strong className="income">+ {money(data.overview.borrowed)}</strong></div>
+                <div><span>Outstanding liability</span><strong className="expense">− {money(data.overview.creditOwed)}</strong></div>
               </div>
             </div>
           </>}

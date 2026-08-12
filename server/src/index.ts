@@ -445,11 +445,11 @@ app.get('/api/dashboard', async (req, res) => {
     const mInc = Number(monthIncome[0].total);
     const mExp = Number(monthExpense[0].total);
 
-    // Credit payments are now included in the Expense totals (money spent).
-    // Available = Income + Borrowed − Expenses(including credit payments)
+    // Available Balance = Income − Expenses (including credit payments).
+    // Borrowed money is a liability, not available funds; Outstanding is shown separately.
     const expenseTotalReal = exp + creditPayments;
     const monthExpenseReal = mExp + monthCreditPayments;
-    const availableBalance = inc + creditBorrowed - expenseTotalReal;
+    const availableBalance = inc - expenseTotalReal;
 
     const categoryBreakdown = byCategory.map((c) => ({
       category: c.category,
@@ -773,7 +773,7 @@ app.get('/api/reports', async (req, res) => {
     });
 
     res.json({
-      overview: { income, expense: expenseReal, borrowed, creditPaid: paid, creditOwed: outstanding, availableBalance: income + borrowed - expenseReal },
+      overview: { income, expense: expenseReal, borrowed, creditPaid: paid, creditOwed: outstanding, availableBalance: income - expenseReal },
       expense: {
         total: expenseReal,
         count: Number(total.expense_count),
