@@ -370,6 +370,8 @@ app.get('/api/dashboard', async (req, res) => {
       byCategory,
       byMonth,
       creditRow,
+      monthCredit,
+      creditByMonth,
     ] = await Promise.all([
       db`SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE type = 'expense'`,
       db`SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE type = 'income'`,
@@ -403,6 +405,18 @@ app.get('/api/dashboard', async (req, res) => {
           COALESCE(SUM(amount) FILTER (WHERE type = 'payment'), 0) as payments
         FROM credits
       `,
+      db`
+        SELECT COALESCE(SUM(amount), 0) as total
+        FROM credits
+        WHERE type = 'payment' AND date >= DATE_TRUNC('month', CURRENT_DATE)
+      `,
+      db`
+        SELECT to_char(date, 'YYYY-MM') as month, SUM(amount) as total
+        FROM credits
+        WHERE type = 'payment'
+        GROUP BY to_char(date, 'YYYY-MM')
+        ORDER BY month ASC
+      `,
     ]);
 
     const byMonthMap = new Map<string, { month: string; expense: number; income: number }>();
@@ -413,37 +427,51 @@ app.get('/api/dashboard', async (req, res) => {
       if (row.type === 'income') entry.income += Number(row.total);
       byMonthMap.set(key, entry);
     }
+    // Credit payments count toward the month's expenses
+    for (const row of creditByMonth) {
+      const key = row.month as string;
+      const entry = byMonthMap.get(key) || { month: key, expense: 0, income: 0 };
+      entry.expense += Number(row.total);
+      byMonthMap.set(key, entry);
+    }
 
     const creditBorrowed = Number(creditRow[0].borrowed);
     const creditPayments = Number(creditRow[0].payments);
     const creditOwed = creditBorrowed - creditPayments;
+    const monthCreditPayments = Number(monthCredit[0].total);
 
     const inc = Number(incomeTotal[0].total);
     const exp = Number(expenseTotal[0].total);
     const mInc = Number(monthIncome[0].total);
     const mExp = Number(monthExpense[0].total);
 
-    // Correct financial model:
-    // Available = Income + Borrowed − Expenses − Credit Payments
-    // Credit Owed = Borrowed − Payments (liability, not an expense)
-    const availableBalance = inc + creditBorrowed - exp - creditPayments;
-    const monthAvailableBalance = mInc + creditBorrowed - mExp - creditPayments;
+    // Credit payments are now included in the Expense totals (money spent).
+    // Available = Income + Borrowed − Expenses(including credit payments)
+    const expenseTotalReal = exp + creditPayments;
+    const monthExpenseReal = mExp + monthCreditPayments;
+    const availableBalance = inc + creditBorrowed - expenseTotalReal;
+
+    const categoryBreakdown = byCategory.map((c) => ({
+      category: c.category,
+      total: Number(c.total),
+    }));
+    if (creditPayments > 0) {
+      categoryBreakdown.push({ category: 'Credit payments', total: creditPayments });
+      categoryBreakdown.sort((a, b) => b.total - a.total);
+    }
 
     res.json({
       incomeTotal: inc,
-      expenseTotal: exp,
+      expenseTotal: expenseTotalReal,
       creditBorrowed,
       creditPayments,
       creditOwed: Math.max(creditOwed, 0),
       availableBalance,
       monthIncome: mInc,
-      monthExpense: mExp,
-      monthBalance: mInc - mExp,
+      monthExpense: monthExpenseReal,
+      monthBalance: mInc - monthExpenseReal,
       count: Number(countRow[0].count),
-      byCategory: byCategory.map((c) => ({
-        category: c.category,
-        total: Number(c.total),
-      })),
+      byCategory: categoryBreakdown,
       byMonth: [...byMonthMap.values()],
     });
   } catch (error) {
@@ -690,7 +718,8 @@ app.get('/api/reports', async (req, res) => {
         COALESCE(SUM(amount) FILTER (WHERE type = 'payment'), 0) AS paid,
         COUNT(*) FILTER (WHERE type = 'borrow' AND due_date < CURRENT_DATE) AS overdue_count,
         COUNT(*) FILTER (WHERE type = 'borrow' AND due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7) AS due_soon_count,
-        COALESCE(SUM(amount) FILTER (WHERE type = 'borrow' AND due_date < CURRENT_DATE), 0) AS overdue_borrowed
+        COALESCE(SUM(amount) FILTER (WHERE type = 'borrow' AND due_date < CURRENT_DATE), 0) AS overdue_borrowed,
+        COUNT(*) FILTER (WHERE type = 'payment') AS payment_count
         FROM credits WHERE 1=1 ${creditFilter.sql}`, creditFilter.params),
       db.query(`SELECT ${CREDIT_RETURNING} FROM credits WHERE 1=1 ${creditFilter.sql} ORDER BY date DESC, created_at DESC LIMIT 100`, creditFilter.params),
       db.query(`SELECT
@@ -712,6 +741,30 @@ app.get('/api/reports', async (req, res) => {
     const monthlyIncome = Number(monthlyTotals[0].income);
     const monthlyExpense = Number(monthlyTotals[0].expense);
     const monthlyCreditPayments = Number(monthlyCreditTotals[0].payments);
+
+    // Credit payments count as expenses (money spent)
+    const expenseReal = expense + paid;
+    const monthlyExpenseReal = monthlyExpense + monthlyCreditPayments;
+
+    const expenseByCategory = expenseCategories.map((r) => ({
+      category: String(r.category),
+      total: Number(r.total),
+      count: Number(r.count),
+    }));
+    if (paid > 0) {
+      expenseByCategory.push({ category: 'Credit payments', total: paid, count: Number(credit.payment_count) || 1 });
+      expenseByCategory.sort((a, b) => b.total - a.total);
+    }
+
+    const monthlyByCategory = monthlyCategories.map((r) => ({
+      category: String(r.category),
+      total: Number(r.total),
+    }));
+    if (monthlyCreditPayments > 0) {
+      monthlyByCategory.push({ category: 'Credit payments', total: monthlyCreditPayments });
+      monthlyByCategory.sort((a, b) => b.total - a.total);
+    }
+
     const actualByCategory = new Map(monthlyCategories.map((row) => [String(row.category), Number(row.total)]));
     const budgets = monthBudgets.map((row) => {
       const planned = Number(row.amount);
@@ -720,13 +773,13 @@ app.get('/api/reports', async (req, res) => {
     });
 
     res.json({
-      overview: { income, expense, borrowed, creditPaid: paid, creditOwed: outstanding, availableBalance: income + borrowed - expense - paid },
+      overview: { income, expense: expenseReal, borrowed, creditPaid: paid, creditOwed: outstanding, availableBalance: income + borrowed - expenseReal },
       expense: {
-        total: expense,
+        total: expenseReal,
         count: Number(total.expense_count),
         average: Number(total.expense_average),
         largest: Number(total.expense_largest),
-        byCategory: expenseCategories.map((r) => ({ category: String(r.category), total: Number(r.total), count: Number(r.count) })),
+        byCategory: expenseByCategory,
         byMethod: expenseMethods.map((r) => ({ method: String(r.method), total: Number(r.total), count: Number(r.count) })),
         transactions: transactions.filter((r) => r.type === 'expense').map(parseExpense),
       },
@@ -746,10 +799,10 @@ app.get('/api/reports', async (req, res) => {
       monthly: {
         month: selectedMonth,
         income: monthlyIncome,
-        expense: monthlyExpense,
+        expense: monthlyExpenseReal,
         creditPayments: monthlyCreditPayments,
-        remaining: monthlyIncome - monthlyExpense - monthlyCreditPayments,
-        byCategory: monthlyCategories.map((r) => ({ category: String(r.category), total: Number(r.total) })),
+        remaining: monthlyIncome - monthlyExpenseReal,
+        byCategory: monthlyByCategory,
         budgets,
       },
       budgets,

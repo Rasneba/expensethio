@@ -43,7 +43,7 @@ async function answer(q: string): Promise<string> {
   }
 
   if (/balance|left|saved|net|available/.test(query)) {
-    return `Your available balance is ${fmtBirr(dash.availableBalance)} (${dash.availableBalance >= 0 ? 'positive' : 'negative'}).\nThis is calculated as: Income (${fmtBirr(dash.incomeTotal)}) + Borrowed (${fmtBirr(dash.creditBorrowed)}) − Expenses (${fmtBirr(dash.expenseTotal)}) − Credit Payments (${fmtBirr(dash.creditPayments)}).`;
+    return `Your available balance is ${fmtBirr(dash.availableBalance)} (${dash.availableBalance >= 0 ? 'positive' : 'negative'}).\nThis is calculated as: Income (${fmtBirr(dash.incomeTotal)}) + Borrowed (${fmtBirr(dash.creditBorrowed)}) − Expenses including credit payments (${fmtBirr(dash.expenseTotal)}).`;
   }
 
   if (/credit|owe|owed|borrow|loan|liability/.test(query)) {
